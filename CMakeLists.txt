@@ -13,6 +13,7 @@ include(GNUInstallDirs)
 option(IMAGECPP_BUILD_CLI "Build the imagecpp command-line tool" ON)
 option(IMAGECPP_BUILD_TESTS "Build image.cpp tests" OFF)
 option(IMAGECPP_BUILD_SHARED "Build libimagecpp as a shared library" OFF)
+option(IMAGECPP_WITH_WEBP "Build WebP decoding and encoding support" ON)
 
 function(imagecpp_enable_warnings target)
     if(MSVC)
@@ -29,6 +30,7 @@ endif()
 
 add_library(imagecpp ${IMAGECPP_LIBRARY_TYPE}
     src/core/status.cpp
+    src/image/codec.cpp
     src/image/image.cpp
     src/image/layout.cpp
     src/image/resize.cpp
@@ -44,6 +46,7 @@ target_include_directories(imagecpp
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/stb
 )
 target_compile_definitions(imagecpp
     PRIVATE IMAGECPP_BUILDING_LIBRARY
@@ -58,10 +61,35 @@ set_target_properties(imagecpp PROPERTIES
 
 imagecpp_enable_warnings(imagecpp)
 
+if(IMAGECPP_WITH_WEBP)
+    set(WEBP_BUILD_ANIM_UTILS OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_CWEBP OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_DWEBP OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_GIF2WEBP OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_IMG2WEBP OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_VWEBP OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_WEBPINFO OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_LIBWEBPMUX OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_WEBPMUX OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_FUZZTEST OFF CACHE BOOL "" FORCE)
+    set(WEBP_BUILD_WEBP_JS OFF CACHE BOOL "" FORCE)
+    set(WEBP_LINK_STATIC ON CACHE BOOL "" FORCE)
+    set(IMAGECPP_SAVED_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
+    set(BUILD_SHARED_LIBS OFF)
+    add_subdirectory(external/libwebp)
+    set(BUILD_SHARED_LIBS ${IMAGECPP_SAVED_BUILD_SHARED_LIBS})
+    unset(IMAGECPP_SAVED_BUILD_SHARED_LIBS)
+    if(NOT TARGET WebP::webp)
+        add_library(WebP::webp ALIAS webp)
+    endif()
+    target_link_libraries(imagecpp PRIVATE WebP::webp)
+    target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_WEBP=1)
+endif()
+
 if(IMAGECPP_BUILD_CLI)
     add_executable(imagecpp_cli
         app/main.cpp
-        app/pnm.cpp
     )
     target_compile_features(imagecpp_cli PRIVATE cxx_std_17)
     target_link_libraries(imagecpp_cli PRIVATE imagecpp::imagecpp)
@@ -74,6 +102,7 @@ if(IMAGECPP_BUILD_TESTS)
     add_executable(imagecpp_tests tests/test_imagecpp.cpp)
     target_compile_features(imagecpp_tests PRIVATE cxx_std_17)
     target_link_libraries(imagecpp_tests PRIVATE imagecpp::imagecpp)
+    target_compile_definitions(imagecpp_tests PRIVATE $<$<BOOL:${IMAGECPP_WITH_WEBP}>:IMAGECPP_TEST_WITH_WEBP=1>)
     imagecpp_enable_warnings(imagecpp_tests)
     add_test(NAME imagecpp.unit COMMAND imagecpp_tests)
     add_executable(imagecpp_c_api_test tests/test_c_api.c)
@@ -83,6 +112,14 @@ if(IMAGECPP_BUILD_TESTS)
     add_test(NAME imagecpp.c-api COMMAND imagecpp_c_api_test)
     if(IMAGECPP_BUILD_CLI)
         add_test(NAME imagecpp.cli.inspect COMMAND imagecpp_cli inspect)
+        add_test(
+            NAME imagecpp.cli.resize
+            COMMAND imagecpp_cli resize
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/2x2.ppm"
+                "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-cli-resize.png"
+                5x3
+                bilinear
+        )
     endif()
 endif()
 

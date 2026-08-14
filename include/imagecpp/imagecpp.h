@@ -61,6 +61,15 @@ typedef enum imagecpp_resize_filter {
     IMAGECPP_RESIZE_BILINEAR = 1
 } imagecpp_resize_filter;
 
+typedef enum imagecpp_file_format {
+    IMAGECPP_FILE_FORMAT_AUTO = 0,
+    IMAGECPP_FILE_FORMAT_PNG = 1,
+    IMAGECPP_FILE_FORMAT_JPEG = 2,
+    IMAGECPP_FILE_FORMAT_WEBP = 3,
+    IMAGECPP_FILE_FORMAT_BMP = 4,
+    IMAGECPP_FILE_FORMAT_TGA = 5
+} imagecpp_file_format;
+
 typedef enum imagecpp_artifact_kind {
     IMAGECPP_ARTIFACT_IMAGE = 0,
     IMAGECPP_ARTIFACT_MASK = 1,
@@ -120,6 +129,17 @@ typedef struct imagecpp_image_desc {
     imagecpp_color_space color_space;
 } imagecpp_image_desc;
 
+typedef struct imagecpp_decode_options {
+    size_t struct_size;
+    imagecpp_pixel_format pixel_format;
+} imagecpp_decode_options;
+
+typedef struct imagecpp_encode_options {
+    size_t struct_size;
+    int quality;
+    int lossless;
+} imagecpp_encode_options;
+
 typedef struct imagecpp_operation_info {
     size_t struct_size;
     const char *id;
@@ -131,6 +151,7 @@ typedef struct imagecpp_operation_info {
 } imagecpp_operation_info;
 
 typedef struct imagecpp_image imagecpp_image;
+typedef struct imagecpp_blob imagecpp_blob;
 typedef struct imagecpp_runtime imagecpp_runtime;
 
 IMAGECPP_API uint32_t imagecpp_version(void);
@@ -153,6 +174,23 @@ IMAGECPP_API imagecpp_status imagecpp_image_get_view(imagecpp_image *image, imag
                                                      imagecpp_error *error);
 IMAGECPP_API imagecpp_status imagecpp_image_get_const_view(const imagecpp_image *image,
                                                            imagecpp_const_image_view *output, imagecpp_error *error);
+
+IMAGECPP_API void imagecpp_decode_options_init(imagecpp_decode_options *options);
+IMAGECPP_API void imagecpp_encode_options_init(imagecpp_encode_options *options);
+IMAGECPP_API imagecpp_status imagecpp_image_decode(const void *data, size_t data_size, imagecpp_file_format format,
+                                                   const imagecpp_decode_options *options, imagecpp_image **output,
+                                                   imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_image_load(const char *filename, const imagecpp_decode_options *options,
+                                                 imagecpp_image **output, imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_image_encode(const imagecpp_const_image_view *image, imagecpp_file_format format,
+                                                   const imagecpp_encode_options *options, imagecpp_blob **output,
+                                                   imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_image_save(const char *filename, const imagecpp_const_image_view *image,
+                                                 imagecpp_file_format format, const imagecpp_encode_options *options,
+                                                 imagecpp_error *error);
+IMAGECPP_API const void *imagecpp_blob_data(const imagecpp_blob *blob);
+IMAGECPP_API size_t imagecpp_blob_size(const imagecpp_blob *blob);
+IMAGECPP_API void imagecpp_blob_destroy(imagecpp_blob *blob);
 
 IMAGECPP_API imagecpp_status imagecpp_resize(const imagecpp_const_image_view *source,
                                              const imagecpp_image_view *destination, imagecpp_resize_filter filter,

@@ -1,7 +1,5 @@
 #include "imagecpp/imagecpp.hpp"
 
-#include "pnm.hpp"
-
 #include <cstdint>
 #include <iostream>
 #include <limits>
@@ -14,7 +12,8 @@ void print_usage(std::ostream &output) {
     output << "image.cpp " << imagecpp_version_string() << '\n'
            << "usage:\n"
            << "  imagecpp inspect\n"
-           << "  imagecpp resize <input.pnm> <output.pnm> <width>x<height> [nearest|bilinear]\n";
+           << "  imagecpp resize <input-image> <output-image> <width>x<height> [nearest|bilinear]\n"
+           << "\nformats: PNG, JPEG, WebP, BMP, and TGA (selected by output extension)\n";
 }
 
 uint32_t parse_size_part(const std::string &value, const char *name) {
@@ -71,7 +70,7 @@ int resize_image(int argc, char **argv) {
     const auto [width, height] = parse_dimensions(argv[4]);
     const imagecpp_resize_filter filter = argc == 6 ? parse_filter(argv[5]) : IMAGECPP_RESIZE_BILINEAR;
 
-    imagecpp::Image source = imagecpp::app::read_pnm(argv[2]);
+    imagecpp::Image source = imagecpp::load(argv[2]);
     const imagecpp_const_image_view source_view = static_cast<const imagecpp::Image &>(source).view();
     imagecpp_image_desc destination_desc{
         sizeof(imagecpp_image_desc), width, height, 0, source_view.pixel_format, source_view.color_space,
@@ -79,7 +78,7 @@ int resize_image(int argc, char **argv) {
     imagecpp::Image destination(destination_desc);
     imagecpp_image_view destination_view = destination.view();
     imagecpp::resize(source_view, destination_view, filter);
-    imagecpp::app::write_pnm(argv[3], static_cast<const imagecpp::Image &>(destination).view());
+    imagecpp::save(argv[3], static_cast<const imagecpp::Image &>(destination).view());
     return 0;
 }
 

@@ -7,9 +7,10 @@ one embeddable library, one command-line tool, and eventually one server for
 generation, editing, understanding, restoration, and composable image
 workflows—without requiring Python at runtime.
 
-The repository is in its foundation phase. The initial implementation provides
-the public image types, runtime introspection, image validation, allocation,
-and resizing needed by future model families. See
+The repository currently provides the model-independent runtime foundation:
+public image types, runtime introspection, image validation, allocation,
+resizing, and native PNG/JPEG/WebP/BMP/TGA codecs. Model-backed providers are
+the next active milestone. See
 [the architecture](docs/architecture.md) for the project boundary and roadmap.
 
 ## Intended capabilities
@@ -24,13 +25,20 @@ and resizing needed by future model families. See
 
 ## Build
 
-`image.cpp` requires a C11 and C++17 compiler plus CMake 3.20 or newer.
+`image.cpp` requires a C11 and C++17 compiler plus CMake 3.20 or newer. Clone
+the pinned codec dependencies with the repository:
 
 ```sh
+git submodule update --init --recursive
 cmake -S . -B build -DIMAGECPP_BUILD_TESTS=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+WebP support is on by default and can be removed with
+`-DIMAGECPP_WITH_WEBP=OFF`. The default static package installs its pinned WebP
+dependency alongside `libimagecpp`, so downstream CMake consumers do not
+silently depend on a system copy.
 
 The runtime is implemented in-process. Development-time conversion and parity
 tools may use reference implementations, but shipped inference will not invoke
@@ -44,11 +52,10 @@ Inspect the operations compiled into the runtime:
 ./build/imagecpp inspect
 ```
 
-The foundation CLI can resize binary PGM/PPM images while the codec layer is
-being established:
+Resize between common image formats; the output extension selects the encoder:
 
 ```sh
-./build/imagecpp resize input.ppm output.ppm 1024x1024 bilinear
+./build/imagecpp resize input.jpg output.webp 1024x1024 bilinear
 ```
 
 The CLI intentionally consumes only the installed C++ wrapper. Applications
@@ -57,25 +64,21 @@ can use the same library directly:
 ```cpp
 #include <imagecpp/imagecpp.hpp>
 
-imagecpp_image_desc description{
-    sizeof(imagecpp_image_desc),
-    512,
-    512,
-    0,
-    IMAGECPP_PIXEL_FORMAT_RGB_U8,
-    IMAGECPP_COLOR_SPACE_SRGB,
-};
+imagecpp::Image image = imagecpp::load("input.png");
+imagecpp::Blob encoded = imagecpp::encode(image, IMAGECPP_FILE_FORMAT_WEBP);
+imagecpp::save("copy.png", image);
 
-imagecpp::Image image(description);
 imagecpp::Runtime runtime;
 for (const imagecpp::OperationInfo & operation : runtime.operations()) {
     // Discover built-in and model-backed operations here.
 }
 ```
 
-All ABI structs passed as outputs must have `struct_size` initialized by the
-caller. Images allocated by the library must be released with
-`imagecpp_image_destroy`; the C++ wrapper handles that ownership with RAII.
+The C API offers the same file and memory codec operations. All ABI structs
+passed as outputs must have `struct_size` initialized by the caller. Images and
+encoded blobs allocated by the library must be released with
+`imagecpp_image_destroy` and `imagecpp_blob_destroy`; the C++ wrapper handles
+both with RAII.
 
 ## Project status
 

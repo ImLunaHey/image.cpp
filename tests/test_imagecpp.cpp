@@ -3,9 +3,11 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -31,6 +33,27 @@ imagecpp_const_image_view as_const(const imagecpp_image_view &view) {
         view.pixel_format,
         view.color_space,
     };
+}
+
+std::vector<uint8_t> packed_bytes(const imagecpp::Image &image) {
+    const imagecpp_const_image_view view = image.view();
+    const size_t row_bytes = static_cast<size_t>(view.width) * imagecpp_pixel_format_bytes_per_pixel(view.pixel_format);
+    std::vector<uint8_t> result(row_bytes * view.height);
+    for (uint32_t row = 0; row < view.height; ++row) {
+        std::memcpy(result.data() + static_cast<size_t>(row) * row_bytes,
+                    static_cast<const uint8_t *>(view.data) + static_cast<size_t>(row) * view.row_stride, row_bytes);
+    }
+    return result;
+}
+
+void set_packed_bytes(imagecpp::Image &image, const std::vector<uint8_t> &bytes) {
+    imagecpp_image_view view = image.view();
+    const size_t row_bytes = static_cast<size_t>(view.width) * imagecpp_pixel_format_bytes_per_pixel(view.pixel_format);
+    require(bytes.size() == row_bytes * view.height, "test pixel data has the wrong size");
+    for (uint32_t row = 0; row < view.height; ++row) {
+        std::memcpy(static_cast<uint8_t *>(view.data) + static_cast<size_t>(row) * view.row_stride,
+                    bytes.data() + static_cast<size_t>(row) * row_bytes, row_bytes);
+    }
 }
 
 void test_version_and_runtime() {
@@ -123,6 +146,107 @@ void test_resize_rejects_mismatched_and_overlapping_views() {
             "mismatched pixel formats were accepted");
 }
 
+void test_lossless_memory_codecs() {
+    imagecpp::Image rgba(make_desc(3, 2, IMAGECPP_PIXEL_FORMAT_RGBA_U8));
+    const std::vector<uint8_t> rgba_pixels{
+        255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 12, 34, 56, 78, 90, 123, 210, 255, 5, 4, 3, 2,
+    };
+    set_packed_bytes(rgba, rgba_pixels);
+
+    imagecpp::Blob png = imagecpp::encode(rgba.view(), IMAGECPP_FILE_FORMAT_PNG);
+    require(png.size() > 8, "PNG encoder returned an empty blob");
+    const auto *png_bytes = static_cast<const uint8_t *>(png.data());
+    require(png_bytes[0] == 0x89 && png_bytes[1] == 'P' && png_bytes[2] == 'N' && png_bytes[3] == 'G',
+            "PNG signature mismatch");
+    imagecpp::Image decoded_png = imagecpp::decode(png.data(), png.size());
+    require(decoded_png.view().pixel_format == IMAGECPP_PIXEL_FORMAT_RGBA_U8, "PNG alpha channel was not preserved");
+    require(packed_bytes(decoded_png) == rgba_pixels, "PNG round trip changed pixels");
+
+    imagecpp::Image rgb(make_desc(3, 2, IMAGECPP_PIXEL_FORMAT_RGB_U8));
+    const std::vector<uint8_t> rgb_pixels{
+        255, 0, 0, 0, 255, 0, 0, 0, 255, 12, 34, 56, 90, 123, 210, 5, 4, 3,
+    };
+    set_packed_bytes(rgb, rgb_pixels);
+#if defined(IMAGECPP_TEST_WITH_WEBP)
+    imagecpp::Blob webp = imagecpp::encode(rgb.view(), IMAGECPP_FILE_FORMAT_WEBP);
+    require(webp.size() > 12, "WebP encoder returned an empty blob");
+    const auto *webp_bytes = static_cast<const uint8_t *>(webp.data());
+    require(std::memcmp(webp_bytes, "RIFF", 4) == 0 && std::memcmp(webp_bytes + 8, "WEBP", 4) == 0,
+            "WebP signature mismatch");
+    imagecpp::Image decoded_webp = imagecpp::decode(webp.bytes());
+    require(decoded_webp.view().pixel_format == IMAGECPP_PIXEL_FORMAT_RGB_U8,
+            "lossless WebP unexpectedly changed pixel format");
+    require(packed_bytes(decoded_webp) == rgb_pixels, "lossless WebP round trip changed pixels");
+
+    imagecpp_decode_options gray_options{};
+    imagecpp_decode_options_init(&gray_options);
+    gray_options.pixel_format = IMAGECPP_PIXEL_FORMAT_GRAY_U8;
+    imagecpp::Image gray_webp = imagecpp::decode(webp.data(), webp.size(), IMAGECPP_FILE_FORMAT_WEBP, &gray_options);
+    require(gray_webp.view().pixel_format == IMAGECPP_PIXEL_FORMAT_GRAY_U8, "WebP grayscale decode format mismatch");
+    require(packed_bytes(gray_webp).size() == 6, "WebP grayscale decode size mismatch");
+#else
+    bool unsupported = false;
+    try {
+        (void)imagecpp::encode(rgb.view(), IMAGECPP_FILE_FORMAT_WEBP);
+    } catch (const imagecpp::Error &error) {
+        unsupported = error.status() == IMAGECPP_STATUS_UNSUPPORTED;
+    }
+    require(unsupported, "WebP encoding should report unsupported when it is not compiled in");
+#endif
+}
+
+void test_bgra_and_classic_formats() {
+    imagecpp::Image bgra(make_desc(2, 1, IMAGECPP_PIXEL_FORMAT_BGRA_U8));
+    set_packed_bytes(bgra, {1, 2, 3, 4, 10, 20, 30, 40});
+    for (const imagecpp_file_format format :
+         {IMAGECPP_FILE_FORMAT_PNG, IMAGECPP_FILE_FORMAT_BMP, IMAGECPP_FILE_FORMAT_TGA}) {
+        imagecpp::Blob encoded = imagecpp::encode(bgra.view(), format);
+        imagecpp_decode_options options{};
+        imagecpp_decode_options_init(&options);
+        options.pixel_format = IMAGECPP_PIXEL_FORMAT_RGBA_U8;
+        imagecpp::Image decoded = imagecpp::decode(encoded.data(), encoded.size(), format, &options);
+        require(packed_bytes(decoded) == std::vector<uint8_t>({3, 2, 1, 4, 30, 20, 10, 40}),
+                "BGRA channel conversion failed");
+    }
+}
+
+void test_jpeg_and_file_io() {
+    imagecpp::Image source(make_desc(16, 16, IMAGECPP_PIXEL_FORMAT_RGB_U8));
+    std::vector<uint8_t> pixels(16 * 16 * 3);
+    for (size_t index = 0; index < pixels.size(); index += 3) {
+        pixels[index] = 40;
+        pixels[index + 1] = 120;
+        pixels[index + 2] = 200;
+    }
+    set_packed_bytes(source, pixels);
+    imagecpp::Blob jpeg = imagecpp::encode(source.view(), IMAGECPP_FILE_FORMAT_JPEG);
+    imagecpp::Image decoded_jpeg = imagecpp::decode(jpeg.data(), jpeg.size(), IMAGECPP_FILE_FORMAT_JPEG);
+    require(decoded_jpeg.view().width == 16 && decoded_jpeg.view().height == 16, "JPEG dimensions changed");
+    const std::vector<uint8_t> jpeg_pixels = packed_bytes(decoded_jpeg);
+    require(std::abs(static_cast<int>(jpeg_pixels[0]) - 40) <= 4 &&
+                std::abs(static_cast<int>(jpeg_pixels[1]) - 120) <= 4 &&
+                std::abs(static_cast<int>(jpeg_pixels[2]) - 200) <= 4,
+            "JPEG color error is unexpectedly large");
+
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "imagecpp-codec-test.png";
+    std::filesystem::remove(path);
+    imagecpp::save(path.string(), source.view());
+    imagecpp::Image loaded = imagecpp::load(path.string());
+    std::filesystem::remove(path);
+    require(packed_bytes(loaded) == pixels, "file save/load round trip changed pixels");
+}
+
+void test_codec_errors() {
+    const uint8_t invalid[]{1, 2, 3, 4};
+    bool rejected = false;
+    try {
+        (void)imagecpp::decode(invalid, sizeof(invalid));
+    } catch (const imagecpp::Error &error) {
+        rejected = error.status() != IMAGECPP_STATUS_OK;
+    }
+    require(rejected, "invalid encoded image data was accepted");
+}
+
 } // namespace
 
 int main() {
@@ -133,6 +257,10 @@ int main() {
         test_bilinear_resize_u8();
         test_bilinear_resize_f32();
         test_resize_rejects_mismatched_and_overlapping_views();
+        test_lossless_memory_codecs();
+        test_bgra_and_classic_formats();
+        test_jpeg_and_file_io();
+        test_codec_errors();
         std::cout << "all image.cpp tests passed\n";
         return 0;
     } catch (const std::exception &error) {
