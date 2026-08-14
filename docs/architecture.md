@@ -32,9 +32,9 @@ environment, subprocess-based adapter, model-specific executable, or sidecar.
    CLI behavior.
 6. **Reusable sessions.** Loaded weights, compiled graphs, workspaces, and
    cached image embeddings survive across requests where the model permits it.
-7. **One compute runtime.** All built-in providers use one pinned GGML version
-   and common backend/device selection. Optional native providers must not
-   introduce a second conflicting GGML copy.
+7. **One compute runtime.** All built-in providers use the top-level pinned
+   `external/ggml` version and common backend/device selection. Provider-local
+   GGML submodules are never compiled into `image.cpp`.
 8. **Evidence with every model.** A model family needs reference parity,
    golden outputs or metrics, reproducible commands, latency, and peak-memory
    measurements before it becomes a supported core family.

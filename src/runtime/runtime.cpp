@@ -50,6 +50,32 @@ imagecpp_status imagecpp_runtime_create(imagecpp_runtime **output, imagecpp_erro
             IMAGECPP_ARTIFACT_MASK,
         });
 #endif
+#if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
+        runtime->operations.push_back({
+            "image.generate.diffusion",
+            "Generate with diffusion",
+            "Text-to-image generation with Stable Diffusion, Flux, and compatible diffusion families",
+            IMAGECPP_TASK_GENERATE,
+            IMAGECPP_ARTIFACT_METADATA,
+            IMAGECPP_ARTIFACT_IMAGE,
+        });
+        runtime->operations.push_back({
+            "image.edit.diffusion",
+            "Edit with diffusion",
+            "Image-to-image editing and mask-guided inpainting with compatible diffusion models",
+            IMAGECPP_TASK_EDIT,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_IMAGE,
+        });
+        runtime->operations.push_back({
+            "image.upscale.esrgan",
+            "Upscale with ESRGAN",
+            "Model-backed image upscaling with ESRGAN-family weights",
+            IMAGECPP_TASK_UPSCALE,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_IMAGE,
+        });
+#endif
         *output = runtime;
         return imagecpp::core::succeed(error);
     } catch (const std::bad_alloc &) {

@@ -70,6 +70,25 @@ typedef enum imagecpp_device {
     IMAGECPP_DEVICE_GPU = 2
 } imagecpp_device;
 
+typedef enum imagecpp_sample_method {
+    IMAGECPP_SAMPLE_METHOD_AUTO = 0,
+    IMAGECPP_SAMPLE_METHOD_EULER = 1,
+    IMAGECPP_SAMPLE_METHOD_EULER_A = 2,
+    IMAGECPP_SAMPLE_METHOD_DPM_PLUS_PLUS_2M = 3,
+    IMAGECPP_SAMPLE_METHOD_LCM = 4,
+    IMAGECPP_SAMPLE_METHOD_DDIM = 5
+} imagecpp_sample_method;
+
+typedef enum imagecpp_scheduler {
+    IMAGECPP_SCHEDULER_AUTO = 0,
+    IMAGECPP_SCHEDULER_DISCRETE = 1,
+    IMAGECPP_SCHEDULER_KARRAS = 2,
+    IMAGECPP_SCHEDULER_EXPONENTIAL = 3,
+    IMAGECPP_SCHEDULER_AYS = 4,
+    IMAGECPP_SCHEDULER_SGM_UNIFORM = 5,
+    IMAGECPP_SCHEDULER_SIMPLE = 6
+} imagecpp_scheduler;
+
 typedef enum imagecpp_file_format {
     IMAGECPP_FILE_FORMAT_AUTO = 0,
     IMAGECPP_FILE_FORMAT_PNG = 1,
@@ -156,6 +175,47 @@ typedef struct imagecpp_model_options {
     imagecpp_device device;
 } imagecpp_model_options;
 
+typedef struct imagecpp_diffusion_model_options {
+    size_t struct_size;
+    const char *model_path;
+    const char *diffusion_model_path;
+    const char *vae_path;
+    const char *clip_l_path;
+    const char *clip_g_path;
+    const char *t5xxl_path;
+    const char *llm_path;
+    int32_t threads;
+    imagecpp_device device;
+    int flash_attention;
+    int keep_text_encoder_on_cpu;
+    int keep_vae_on_cpu;
+} imagecpp_diffusion_model_options;
+
+typedef struct imagecpp_upscaler_model_options {
+    size_t struct_size;
+    const char *model_path;
+    int32_t threads;
+    imagecpp_device device;
+    int32_t tile_size;
+} imagecpp_upscaler_model_options;
+
+typedef struct imagecpp_generate_options {
+    size_t struct_size;
+    const char *prompt;
+    const char *negative_prompt;
+    uint32_t width;
+    uint32_t height;
+    int32_t steps;
+    float guidance;
+    int64_t seed;
+    int32_t batch_count;
+    float strength;
+    imagecpp_sample_method sample_method;
+    imagecpp_scheduler scheduler;
+    const imagecpp_const_image_view *init_image;
+    const imagecpp_const_image_view *mask;
+} imagecpp_generate_options;
+
 typedef struct imagecpp_point_prompt {
     float x;
     float y;
@@ -202,6 +262,7 @@ typedef struct imagecpp_model imagecpp_model;
 typedef struct imagecpp_runtime imagecpp_runtime;
 typedef struct imagecpp_session imagecpp_session;
 typedef struct imagecpp_segment_result imagecpp_segment_result;
+typedef struct imagecpp_image_result imagecpp_image_result;
 
 IMAGECPP_API uint32_t imagecpp_version(void);
 IMAGECPP_API const char *imagecpp_version_string(void);
@@ -242,9 +303,17 @@ IMAGECPP_API size_t imagecpp_blob_size(const imagecpp_blob *blob);
 IMAGECPP_API void imagecpp_blob_destroy(imagecpp_blob *blob);
 
 IMAGECPP_API void imagecpp_model_options_init(imagecpp_model_options *options);
+IMAGECPP_API void imagecpp_diffusion_model_options_init(imagecpp_diffusion_model_options *options);
+IMAGECPP_API void imagecpp_upscaler_model_options_init(imagecpp_upscaler_model_options *options);
 IMAGECPP_API imagecpp_status imagecpp_model_load(const imagecpp_runtime *runtime, const char *operation_id,
                                                  const imagecpp_model_options *options, imagecpp_model **output,
                                                  imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_diffusion_model_load(const imagecpp_runtime *runtime,
+                                                           const imagecpp_diffusion_model_options *options,
+                                                           imagecpp_model **output, imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_upscaler_model_load(const imagecpp_runtime *runtime,
+                                                          const imagecpp_upscaler_model_options *options,
+                                                          imagecpp_model **output, imagecpp_error *error);
 IMAGECPP_API void imagecpp_model_destroy(imagecpp_model *model);
 IMAGECPP_API imagecpp_status imagecpp_session_create(const imagecpp_model *model, imagecpp_session **output,
                                                      imagecpp_error *error);
@@ -259,6 +328,16 @@ IMAGECPP_API size_t imagecpp_segment_result_count(const imagecpp_segment_result 
 IMAGECPP_API imagecpp_status imagecpp_segment_result_info(const imagecpp_segment_result *result, size_t index,
                                                           imagecpp_segment_info *output, imagecpp_error *error);
 IMAGECPP_API void imagecpp_segment_result_destroy(imagecpp_segment_result *result);
+
+IMAGECPP_API void imagecpp_generate_options_init(imagecpp_generate_options *options);
+IMAGECPP_API imagecpp_status imagecpp_generate(const imagecpp_model *model, const imagecpp_generate_options *options,
+                                               imagecpp_image_result **output, imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_upscale(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                              uint32_t factor, imagecpp_image_result **output, imagecpp_error *error);
+IMAGECPP_API size_t imagecpp_image_result_count(const imagecpp_image_result *result);
+IMAGECPP_API imagecpp_status imagecpp_image_result_view(const imagecpp_image_result *result, size_t index,
+                                                        imagecpp_const_image_view *output, imagecpp_error *error);
+IMAGECPP_API void imagecpp_image_result_destroy(imagecpp_image_result *result);
 
 IMAGECPP_API imagecpp_status imagecpp_resize(const imagecpp_const_image_view *source,
                                              const imagecpp_image_view *destination, imagecpp_resize_filter filter,

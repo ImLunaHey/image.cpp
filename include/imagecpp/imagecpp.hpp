@@ -247,6 +247,16 @@ class Model final {
         check(imagecpp_model_load(runtime.get(), operation_id.c_str(), &options, &handle_, &error), error);
     }
 
+    Model(const Runtime &runtime, const imagecpp_diffusion_model_options &options) {
+        imagecpp_error error{};
+        check(imagecpp_diffusion_model_load(runtime.get(), &options, &handle_, &error), error);
+    }
+
+    Model(const Runtime &runtime, const imagecpp_upscaler_model_options &options) {
+        imagecpp_error error{};
+        check(imagecpp_upscaler_model_load(runtime.get(), &options, &handle_, &error), error);
+    }
+
     ~Model() { imagecpp_model_destroy(handle_); }
 
     Model(const Model &) = delete;
@@ -268,6 +278,60 @@ class Model final {
   private:
     imagecpp_model *handle_ = nullptr;
 };
+
+class ImageResult final {
+  public:
+    ~ImageResult() { imagecpp_image_result_destroy(handle_); }
+
+    ImageResult(const ImageResult &) = delete;
+    ImageResult &operator=(const ImageResult &) = delete;
+
+    ImageResult(ImageResult &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    ImageResult &operator=(ImageResult &&other) noexcept {
+        if (this != &other) {
+            imagecpp_image_result_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    size_t size() const noexcept { return imagecpp_image_result_count(handle_); }
+
+    imagecpp_const_image_view at(size_t index) const {
+        imagecpp_const_image_view view{};
+        view.struct_size = sizeof(view);
+        imagecpp_error error{};
+        check(imagecpp_image_result_view(handle_, index, &view, &error), error);
+        return view;
+    }
+
+  private:
+    explicit ImageResult(imagecpp_image_result *handle) noexcept : handle_(handle) {}
+
+    friend ImageResult generate(const Model &, const imagecpp_generate_options &);
+    friend ImageResult upscale(const Model &, const imagecpp_const_image_view &, uint32_t);
+
+    imagecpp_image_result *handle_ = nullptr;
+};
+
+inline ImageResult generate(const Model &model, const imagecpp_generate_options &options) {
+    imagecpp_image_result *result = nullptr;
+    imagecpp_error error{};
+    check(imagecpp_generate(model.get(), &options, &result, &error), error);
+    return ImageResult(result);
+}
+
+inline ImageResult upscale(const Model &model, const imagecpp_const_image_view &image, uint32_t factor) {
+    imagecpp_image_result *result = nullptr;
+    imagecpp_error error{};
+    check(imagecpp_upscale(model.get(), &image, factor, &result, &error), error);
+    return ImageResult(result);
+}
+
+inline ImageResult upscale(const Model &model, const Image &image, uint32_t factor) {
+    return upscale(model, image.view(), factor);
+}
 
 struct SegmentInfo {
     imagecpp_const_image_view mask{};

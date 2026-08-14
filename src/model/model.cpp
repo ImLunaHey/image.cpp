@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <new>
 #include <string_view>
 #include <utility>
@@ -20,6 +21,10 @@ struct imagecpp_session {
 
 struct imagecpp_segment_result {
     std::vector<imagecpp::detail::SegmentOutput> outputs;
+};
+
+struct imagecpp_image_result {
+    std::vector<imagecpp::detail::ImageOutput> outputs;
 };
 
 namespace imagecpp::detail {
@@ -57,6 +62,45 @@ const imagecpp_model_options &validate_model_options(const imagecpp_model_option
 }
 #endif
 
+#if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
+const imagecpp_diffusion_model_options &
+validate_diffusion_model_options(const imagecpp_diffusion_model_options *options) {
+    if (options == nullptr || options->struct_size < sizeof(imagecpp_diffusion_model_options)) {
+        throw std::invalid_argument("diffusion model options are null or too small");
+    }
+    const bool has_checkpoint = options->model_path != nullptr && options->model_path[0] != '\0';
+    const bool has_diffusion = options->diffusion_model_path != nullptr && options->diffusion_model_path[0] != '\0';
+    if (!has_checkpoint && !has_diffusion) {
+        throw std::invalid_argument("diffusion model requires a checkpoint or diffusion-model path");
+    }
+    if (options->threads < 0) {
+        throw std::invalid_argument("diffusion model thread count cannot be negative");
+    }
+    if (options->device != IMAGECPP_DEVICE_AUTO && options->device != IMAGECPP_DEVICE_CPU &&
+        options->device != IMAGECPP_DEVICE_GPU) {
+        throw std::invalid_argument("unknown diffusion model device");
+    }
+    return *options;
+}
+
+const imagecpp_upscaler_model_options &validate_upscaler_model_options(const imagecpp_upscaler_model_options *options) {
+    if (options == nullptr || options->struct_size < sizeof(imagecpp_upscaler_model_options)) {
+        throw std::invalid_argument("upscaler model options are null or too small");
+    }
+    if (options->model_path == nullptr || options->model_path[0] == '\0') {
+        throw std::invalid_argument("upscaler model path is empty");
+    }
+    if (options->threads < 0 || options->tile_size < 0) {
+        throw std::invalid_argument("upscaler thread count and tile size cannot be negative");
+    }
+    if (options->device != IMAGECPP_DEVICE_AUTO && options->device != IMAGECPP_DEVICE_CPU &&
+        options->device != IMAGECPP_DEVICE_GPU) {
+        throw std::invalid_argument("unknown upscaler model device");
+    }
+    return *options;
+}
+#endif
+
 SegmentRequest segment_request(const imagecpp_segment_options *options) {
     if (options == nullptr || options->struct_size < sizeof(imagecpp_segment_options)) {
         throw std::invalid_argument("segment options are null or too small");
@@ -88,7 +132,63 @@ SegmentRequest segment_request(const imagecpp_segment_options *options) {
     return request;
 }
 
+GenerateRequest generate_request(const imagecpp_generate_options *options) {
+    if (options == nullptr || options->struct_size < sizeof(imagecpp_generate_options)) {
+        throw std::invalid_argument("generation options are null or too small");
+    }
+    if (options->prompt == nullptr || options->prompt[0] == '\0') {
+        throw std::invalid_argument("generation prompt is empty");
+    }
+    if (options->width == 0 || options->height == 0) {
+        throw std::invalid_argument("generation dimensions must be positive");
+    }
+    if (options->width > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
+        options->height > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
+        throw std::invalid_argument("generation dimensions exceed the provider limit");
+    }
+    if (options->steps <= 0 || options->batch_count <= 0) {
+        throw std::invalid_argument("generation steps and batch count must be positive");
+    }
+    if (!std::isfinite(options->guidance) || options->guidance < 0.0F) {
+        throw std::invalid_argument("generation guidance must be finite and non-negative");
+    }
+    if (!std::isfinite(options->strength) || options->strength < 0.0F || options->strength > 1.0F) {
+        throw std::invalid_argument("generation strength must be between zero and one");
+    }
+    if (options->sample_method < IMAGECPP_SAMPLE_METHOD_AUTO || options->sample_method > IMAGECPP_SAMPLE_METHOD_DDIM) {
+        throw std::invalid_argument("unknown generation sample method");
+    }
+    if (options->scheduler < IMAGECPP_SCHEDULER_AUTO || options->scheduler > IMAGECPP_SCHEDULER_SIMPLE) {
+        throw std::invalid_argument("unknown generation scheduler");
+    }
+    if (options->mask != nullptr && options->init_image == nullptr) {
+        throw std::invalid_argument("an inpainting mask requires an initial image");
+    }
+
+    return {
+        options->prompt,    options->negative_prompt == nullptr ? "" : options->negative_prompt,
+        options->width,     options->height,
+        options->steps,     options->guidance,
+        options->seed,      options->batch_count,
+        options->strength,  options->sample_method,
+        options->scheduler, options->init_image,
+        options->mask,
+    };
+}
+
 } // namespace
+
+std::unique_ptr<Session> Model::create_session() {
+    throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not provide reusable image sessions");
+}
+
+std::vector<ImageOutput> Model::generate(const GenerateRequest &) {
+    throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support image generation");
+}
+
+ImageOutput Model::upscale(const imagecpp_const_image_view &, uint32_t) {
+    throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support image upscaling");
+}
 } // namespace imagecpp::detail
 
 extern "C" {
@@ -96,6 +196,30 @@ extern "C" {
 void imagecpp_model_options_init(imagecpp_model_options *options) {
     if (options != nullptr) {
         *options = {sizeof(imagecpp_model_options), nullptr, 0, IMAGECPP_DEVICE_AUTO};
+    }
+}
+
+void imagecpp_diffusion_model_options_init(imagecpp_diffusion_model_options *options) {
+    if (options != nullptr) {
+        *options = {sizeof(imagecpp_diffusion_model_options),
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    0,
+                    IMAGECPP_DEVICE_AUTO,
+                    1,
+                    0,
+                    0};
+    }
+}
+
+void imagecpp_upscaler_model_options_init(imagecpp_upscaler_model_options *options) {
+    if (options != nullptr) {
+        *options = {sizeof(imagecpp_upscaler_model_options), nullptr, 0, IMAGECPP_DEVICE_AUTO, 0};
     }
 }
 
@@ -135,6 +259,63 @@ imagecpp_status imagecpp_model_load(const imagecpp_runtime *runtime, const char 
     } catch (...) {
         return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected model load failure");
     }
+}
+
+imagecpp_status imagecpp_diffusion_model_load(const imagecpp_runtime *runtime,
+                                              const imagecpp_diffusion_model_options *options, imagecpp_model **output,
+                                              imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output model pointer is null");
+    }
+    *output = nullptr;
+    if (runtime == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "runtime is null");
+    }
+#if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
+    try {
+        const imagecpp_diffusion_model_options &settings = imagecpp::detail::validate_diffusion_model_options(options);
+        auto model = std::make_unique<imagecpp_model>();
+        model->implementation = imagecpp::detail::load_diffusion_model(settings);
+        *output = model.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected diffusion model load failure");
+    }
+#else
+    (void)options;
+    return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED, "diffusion support is not compiled in");
+#endif
+}
+
+imagecpp_status imagecpp_upscaler_model_load(const imagecpp_runtime *runtime,
+                                             const imagecpp_upscaler_model_options *options, imagecpp_model **output,
+                                             imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output model pointer is null");
+    }
+    *output = nullptr;
+    if (runtime == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "runtime is null");
+    }
+#if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
+    try {
+        const imagecpp_upscaler_model_options &settings = imagecpp::detail::validate_upscaler_model_options(options);
+        auto model = std::make_unique<imagecpp_model>();
+        model->implementation = imagecpp::detail::load_upscaler_model(settings);
+        *output = model.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected upscaler model load failure");
+    }
+#else
+    (void)options;
+    return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED,
+                                "model-backed upscaling support is not compiled in");
+#endif
 }
 
 void imagecpp_model_destroy(imagecpp_model *model) { delete model; }
@@ -248,5 +429,130 @@ imagecpp_status imagecpp_segment_result_info(const imagecpp_segment_result *resu
 }
 
 void imagecpp_segment_result_destroy(imagecpp_segment_result *result) { delete result; }
+
+void imagecpp_generate_options_init(imagecpp_generate_options *options) {
+    if (options != nullptr) {
+        *options = {sizeof(imagecpp_generate_options),
+                    "",
+                    "",
+                    512,
+                    512,
+                    20,
+                    7.0F,
+                    -1,
+                    1,
+                    0.75F,
+                    IMAGECPP_SAMPLE_METHOD_AUTO,
+                    IMAGECPP_SCHEDULER_AUTO,
+                    nullptr,
+                    nullptr};
+    }
+}
+
+imagecpp_status imagecpp_generate(const imagecpp_model *model, const imagecpp_generate_options *options,
+                                  imagecpp_image_result **output, imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT,
+                                    "output generation result pointer is null");
+    }
+    *output = nullptr;
+    if (model == nullptr || model->implementation == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "model is null");
+    }
+    try {
+        const imagecpp::detail::GenerateRequest request = imagecpp::detail::generate_request(options);
+        imagecpp::detail::ImageLayout initial_layout;
+        if (request.init_image != nullptr) {
+            const imagecpp_status status =
+                imagecpp::detail::validate_const_view(request.init_image, initial_layout, error);
+            if (status != IMAGECPP_STATUS_OK) {
+                return status;
+            }
+            if (request.init_image->width != request.width || request.init_image->height != request.height) {
+                return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT,
+                                            "initial image dimensions must match generation dimensions");
+            }
+        }
+        if (request.mask != nullptr) {
+            imagecpp::detail::ImageLayout mask_layout;
+            const imagecpp_status status = imagecpp::detail::validate_const_view(request.mask, mask_layout, error);
+            if (status != IMAGECPP_STATUS_OK) {
+                return status;
+            }
+            if (request.mask->width != request.width || request.mask->height != request.height) {
+                return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT,
+                                            "mask dimensions must match generation dimensions");
+            }
+        }
+        auto result = std::make_unique<imagecpp_image_result>();
+        result->outputs = model->implementation->generate(request);
+        if (result->outputs.empty()) {
+            throw imagecpp::detail::Failure(IMAGECPP_STATUS_MODEL_ERROR, "generation returned no images");
+        }
+        *output = result.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected image generation failure");
+    }
+}
+
+imagecpp_status imagecpp_upscale(const imagecpp_model *model, const imagecpp_const_image_view *image, uint32_t factor,
+                                 imagecpp_image_result **output, imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output upscale result pointer is null");
+    }
+    *output = nullptr;
+    if (model == nullptr || model->implementation == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "model is null");
+    }
+    if (factor < 2) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "upscale factor must be at least two");
+    }
+    imagecpp::detail::ImageLayout layout;
+    const imagecpp_status status = imagecpp::detail::validate_const_view(image, layout, error);
+    if (status != IMAGECPP_STATUS_OK) {
+        return status;
+    }
+    try {
+        auto result = std::make_unique<imagecpp_image_result>();
+        result->outputs.push_back(model->implementation->upscale(*image, factor));
+        *output = result.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected image upscale failure");
+    }
+}
+
+size_t imagecpp_image_result_count(const imagecpp_image_result *result) {
+    return result == nullptr ? 0 : result->outputs.size();
+}
+
+imagecpp_status imagecpp_image_result_view(const imagecpp_image_result *result, size_t index,
+                                           imagecpp_const_image_view *output, imagecpp_error *error) {
+    if (result == nullptr || output == nullptr || output->struct_size < sizeof(imagecpp_const_image_view)) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT,
+                                    "image result or output view is null or too small");
+    }
+    if (index >= result->outputs.size()) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_OUT_OF_RANGE, "image result index is out of range");
+    }
+    const imagecpp::detail::ImageOutput &item = result->outputs[index];
+    const size_t bytes_per_pixel = imagecpp_pixel_format_bytes_per_pixel(item.pixel_format);
+    *output = {sizeof(imagecpp_const_image_view),
+               item.data.data(),
+               item.data.size(),
+               item.width,
+               item.height,
+               static_cast<size_t>(item.width) * bytes_per_pixel,
+               item.pixel_format,
+               item.color_space};
+    return imagecpp::core::succeed(error);
+}
+
+void imagecpp_image_result_destroy(imagecpp_image_result *result) { delete result; }
 
 } // extern "C"

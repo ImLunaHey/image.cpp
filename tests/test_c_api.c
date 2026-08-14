@@ -2,6 +2,22 @@
 
 int main(void) {
     imagecpp_error error = {0};
+    imagecpp_diffusion_model_options diffusion_options;
+    imagecpp_diffusion_model_options_init(&diffusion_options);
+    if (diffusion_options.struct_size != sizeof(diffusion_options) || diffusion_options.flash_attention != 1) {
+        return 6;
+    }
+    imagecpp_upscaler_model_options upscaler_options;
+    imagecpp_upscaler_model_options_init(&upscaler_options);
+    if (upscaler_options.struct_size != sizeof(upscaler_options)) {
+        return 7;
+    }
+    imagecpp_generate_options generate_options;
+    imagecpp_generate_options_init(&generate_options);
+    if (generate_options.struct_size != sizeof(generate_options) || generate_options.width != 512 ||
+        generate_options.height != 512 || generate_options.batch_count != 1) {
+        return 8;
+    }
     imagecpp_image_desc desc = {
         sizeof(imagecpp_image_desc), 1, 1, 0, IMAGECPP_PIXEL_FORMAT_RGB_U8, IMAGECPP_COLOR_SPACE_SRGB,
     };

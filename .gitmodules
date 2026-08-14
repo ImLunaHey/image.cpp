@@ -7,3 +7,9 @@
 [submodule "external/sam3"]
 	path = external/sam3
 	url = https://github.com/PABannier/sam3.cpp.git
+[submodule "external/stable-diffusion"]
+	path = external/stable-diffusion
+	url = https://github.com/leejet/stable-diffusion.cpp.git
+[submodule "external/ggml"]
+	path = external/ggml
+	url = https://github.com/PABannier/ggml.git

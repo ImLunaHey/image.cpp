@@ -8,10 +8,10 @@ generation, editing, understanding, restoration, and composable image
 workflows—without requiring Python at runtime.
 
 The repository currently provides the model-independent runtime foundation,
-native PNG/JPEG/WebP/BMP/TGA codecs, and a first model-backed vertical slice:
-promptable SAM 2/SAM 3/EdgeTAM segmentation plus transparent background
-removal. See [the architecture](docs/architecture.md) for the project boundary
-and roadmap.
+native PNG/JPEG/WebP/BMP/TGA codecs, promptable SAM 2/SAM 3/EdgeTAM
+segmentation, transparent background removal, diffusion generation and editing,
+and ESRGAN upscaling. See [the architecture](docs/architecture.md) for the
+project boundary and roadmap.
 
 ## Intended capabilities
 
@@ -39,6 +39,10 @@ WebP support is on by default and can be removed with
 `-DIMAGECPP_WITH_WEBP=OFF`. The default static package installs its pinned WebP
 dependency alongside `libimagecpp`, so downstream CMake consumers do not
 silently depend on a system copy.
+
+The model-backed composite is on by default. Use
+`-DIMAGECPP_WITH_SAM3=OFF` or `-DIMAGECPP_WITH_STABLE_DIFFUSION=OFF` for a
+smaller custom build. Both providers compile against one pinned GGML runtime.
 
 The runtime is implemented in-process. Development-time conversion and parity
 tools may use reference implementations, but shipped inference will not invoke
@@ -69,6 +73,16 @@ cmake --build build --target imagecpp_model_edgetam
 
 See [models](docs/models.md) for checksums, provenance, model licensing, device
 selection, and reusable session behavior.
+
+Download the validated generation and upscale models, then use the same binary
+for text-to-image, img2img/inpainting, and ESRGAN:
+
+```sh
+cmake --build build --target imagecpp_model_sd15_q4 imagecpp_model_realesrgan
+./build/imagecpp generate models/v1-5-pruned_Q4_0.gguf output.png "an orange cat on a windowsill" --seed 42
+./build/imagecpp edit models/v1-5-pruned_Q4_0.gguf input.png edited.png "a watercolor painting" --strength 0.45
+./build/imagecpp upscale models/RealESRGAN_x4plus_anime_6B.pth input.png upscaled.png --factor 4
+```
 
 The CLI intentionally consumes only the installed C++ wrapper. Applications
 can use the same library directly:

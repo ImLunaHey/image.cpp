@@ -1,4 +1,5 @@
 #include "imagecpp/imagecpp.hpp"
+#include "model_commands.hpp"
 
 #include <algorithm>
 #include <array>
@@ -20,6 +21,9 @@ void print_usage(std::ostream &output) {
            << "  imagecpp resize <input-image> <output-image> <width>x<height> [nearest|bilinear]\n"
            << "  imagecpp segment <model> <input-image> <output-mask> [prompt options]\n"
            << "  imagecpp remove-background <model> <input-image> <output-image> [prompt options]\n"
+           << "  imagecpp generate <model> <output-image> <prompt> [generation options]\n"
+           << "  imagecpp edit <model> <input-image> <output-image> <prompt> [generation options]\n"
+           << "  imagecpp upscale <model> <input-image> <output-image> [upscale options]\n"
            << "\nprompt options:\n"
            << "  --point <x>,<y>        positive point (repeatable)\n"
            << "  --negative <x>,<y>     negative point (repeatable)\n"
@@ -28,6 +32,7 @@ void print_usage(std::ostream &output) {
            << "  --cpu | --gpu          select a compute device (default: auto)\n"
            << "  --threads <count>      CPU worker threads\n"
            << "\nformats: PNG, JPEG, WebP, BMP, and TGA (selected by output extension)\n";
+    print_model_command_usage(output);
 }
 
 uint32_t parse_size_part(const std::string &value, const char *name) {
@@ -299,6 +304,15 @@ int main(int argc, char **argv) {
         }
         if (argc >= 2 && std::string(argv[1]) == "remove-background") {
             return remove_background(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "generate") {
+            return generate_image_command(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "edit") {
+            return edit_image_command(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "upscale") {
+            return upscale_image_command(argc, argv);
         }
         print_usage(argc == 1 ? std::cout : std::cerr);
         return argc == 1 ? 0 : 2;

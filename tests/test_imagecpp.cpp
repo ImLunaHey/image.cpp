@@ -60,17 +60,28 @@ void test_version_and_runtime() {
     require(std::string(imagecpp_version_string()) == "0.1.0-dev", "unexpected version string");
     imagecpp::Runtime runtime;
     const auto operations = runtime.operations();
+    size_t expected_count = 1;
 #if defined(IMAGECPP_TEST_WITH_SAM3)
-    require(operations.size() == 2, "runtime should expose utility and SAM operations");
-#else
-    require(operations.size() == 1, "runtime should expose one foundation operation");
+    expected_count += 1;
 #endif
-    require(operations[0].id == "image.resize", "runtime should expose image.resize");
-    require(operations[0].input_kind == IMAGECPP_ARTIFACT_IMAGE, "resize should consume an image");
-    require(operations[0].output_kind == IMAGECPP_ARTIFACT_IMAGE, "resize should emit an image");
+#if defined(IMAGECPP_TEST_WITH_STABLE_DIFFUSION)
+    expected_count += 3;
+#endif
+    require(operations.size() == expected_count, "runtime operation count mismatch");
+    size_t index = 0;
+    require(operations[index].id == "image.resize", "runtime should expose image.resize");
+    require(operations[index].input_kind == IMAGECPP_ARTIFACT_IMAGE, "resize should consume an image");
+    require(operations[index].output_kind == IMAGECPP_ARTIFACT_IMAGE, "resize should emit an image");
+    ++index;
 #if defined(IMAGECPP_TEST_WITH_SAM3)
-    require(operations[1].id == "image.segment.sam", "runtime should expose image.segment.sam");
-    require(operations[1].task == IMAGECPP_TASK_SEGMENT, "SAM operation task mismatch");
+    require(operations[index].id == "image.segment.sam", "runtime should expose image.segment.sam");
+    require(operations[index].task == IMAGECPP_TASK_SEGMENT, "SAM operation task mismatch");
+    ++index;
+#endif
+#if defined(IMAGECPP_TEST_WITH_STABLE_DIFFUSION)
+    require(operations[index++].id == "image.generate.diffusion", "runtime should expose diffusion generation");
+    require(operations[index++].id == "image.edit.diffusion", "runtime should expose diffusion editing");
+    require(operations[index].id == "image.upscale.esrgan", "runtime should expose ESRGAN upscaling");
 #endif
 }
 
@@ -92,6 +103,22 @@ void test_model_api_validation() {
     imagecpp_segment_options segment_options{};
     imagecpp_segment_options_init(&segment_options);
     require(segment_options.struct_size == sizeof(segment_options), "segment options initializer is invalid");
+
+    imagecpp_diffusion_model_options diffusion_options{};
+    imagecpp_diffusion_model_options_init(&diffusion_options);
+    require(diffusion_options.struct_size == sizeof(diffusion_options),
+            "diffusion model options initializer is invalid");
+    require(diffusion_options.flash_attention == 1, "diffusion flash attention should default on");
+
+    imagecpp_upscaler_model_options upscaler_options{};
+    imagecpp_upscaler_model_options_init(&upscaler_options);
+    require(upscaler_options.struct_size == sizeof(upscaler_options), "upscaler model options initializer is invalid");
+
+    imagecpp_generate_options generate_options{};
+    imagecpp_generate_options_init(&generate_options);
+    require(generate_options.struct_size == sizeof(generate_options), "generation options initializer is invalid");
+    require(generate_options.width == 512 && generate_options.height == 512,
+            "generation dimensions defaults are invalid");
 }
 
 void test_layout_validation() {
