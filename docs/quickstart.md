@@ -19,7 +19,8 @@ A normal runtime build does not need Python.
 
 The starter bundle is about 217 MB and enables promptable segmentation,
 background removal, dense depth with optional camera pose, joint image/text
-embeddings, zero-shot classification, and 4x upscaling:
+embeddings, zero-shot classification, 4x upscaling, and a composed transparent
+cutout workflow:
 
 ```sh
 cmake --build build --target imagecpp_models_starter
@@ -41,6 +42,11 @@ Given an `input.jpg`, try:
 ./build/imagecpp remove-background \
   models/edgetam_q4_0.ggml input.jpg cutout.png --point 640,420
 
+./build/imagecpp cutout \
+  models/edgetam_q4_0.ggml input.jpg cutout-4x.png \
+  --point 640,420 --padding 16 \
+  --upscaler models/RealESRGAN_x4plus_anime_6B.pth --factor 4
+
 ./build/imagecpp upscale \
   models/RealESRGAN_x4plus_anime_6B.pth input.jpg upscaled.png --factor 4
 
@@ -54,6 +60,11 @@ Given an `input.jpg`, try:
 Prompt coordinates are image pixels. A positive point should be inside the
 object; add repeatable `--negative x,y` points outside it or use
 `--box x0,y0,x1,y1` when the initial mask is ambiguous.
+
+`cutout` selects the best mask, crops to its foreground bounds, upscales the
+color crop before applying alpha, and writes an RGBA image. Use
+`--keep-canvas` to preserve the full input extent, or omit `--upscaler` for a
+native-resolution result.
 
 `classify` applies the standard `a photo of a <label>` prompt template and
 prints probabilities normalized over the supplied labels. Use `embed-text`
@@ -124,6 +135,34 @@ imagecpp::EmbeddingResult vector = imagecpp::embed_image(clip, input);
 imagecpp::ClassificationResult labels =
     imagecpp::classify(clip, input, {"cat", "dog", "bicycle"});
 imagecpp::ClassificationInfo best = labels.at(0);
+```
+
+Typed workflows use the same reusable model and session handles:
+
+```cpp
+imagecpp_model_options sam_options{};
+imagecpp_model_options_init(&sam_options);
+sam_options.model_path = "models/edgetam_q4_0.ggml";
+imagecpp::Model sam(runtime, "image.segment.sam", sam_options);
+imagecpp::Session sam_session(sam);
+
+imagecpp_upscaler_model_options upscale_options{};
+imagecpp_upscaler_model_options_init(&upscale_options);
+upscale_options.model_path = "models/RealESRGAN_x4plus_anime_6B.pth";
+imagecpp::Model upscaler(runtime, upscale_options);
+
+imagecpp_point_prompt point{640.0F, 420.0F, 1};
+imagecpp_cutout_options cutout_options{};
+imagecpp_cutout_options_init(&cutout_options);
+cutout_options.segment.points = &point;
+cutout_options.segment.point_count = 1;
+cutout_options.padding = 16;
+cutout_options.upscale_factor = 4;
+
+imagecpp::CutoutResult cutout =
+    imagecpp::cutout(sam_session, &upscaler, input, cutout_options);
+imagecpp::CutoutInfo cutout_info = cutout.info();
+// cutout_info.image and cutout_info.mask remain valid while cutout is alive.
 ```
 
 Installed consumers use `find_package(imagecpp CONFIG REQUIRED)` and link

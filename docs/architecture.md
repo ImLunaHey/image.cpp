@@ -136,7 +136,8 @@ The first useful release should provide one binary containing:
 3. Depth Anything depth estimation (implemented);
 4. ESRGAN-class upscaling (implemented);
 5. generation and editing through an in-process native provider (implemented); and
-6. at least one typed workflow joining multiple operations.
+6. at least one typed workflow joining multiple operations (implemented:
+   prompted segmentation -> crop -> optional upscale -> alpha cutout).
 
 Foundation work lands first: correct image buffers, resize/crop/normalize,
 runtime introspection, errors, cancellation, tests, and packaging boundaries.

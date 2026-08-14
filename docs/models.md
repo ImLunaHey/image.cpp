@@ -36,6 +36,22 @@ Box-prompted background removal:
   --box 120,80,1100,760
 ```
 
+Compose EdgeTAM with the starter RealESRGAN model to produce a cropped,
+high-resolution transparent asset in one native library call:
+
+```sh
+./build/imagecpp cutout \
+  models/edgetam_q4_0.ggml input.jpg cutout-4x.png \
+  --point 640,420 --padding 16 \
+  --upscaler models/RealESRGAN_x4plus_anime_6B.pth --factor 4
+```
+
+The typed workflow selects the candidate with the highest predicted IoU. It
+upscales the opaque RGB crop before applying the resized mask, avoiding dark
+color bleed at translucent edges. `--keep-canvas` disables cropping. The C ABI
+returns the RGBA image, exact final mask, source-space crop box, selected mask
+index, segmentation score, and predicted IoU from one owned result.
+
 Metal is selected automatically on Apple hardware. Pass `--cpu` for CPU-only
 execution or `--gpu` to require the GPU-capable provider build. A loaded model
 and encoded image are reusable through the C and C++ session APIs, so an
@@ -196,6 +212,7 @@ I/O:
 | Operation | Input | Time | Peak footprint |
 | --- | --- | ---: | ---: |
 | EdgeTAM background removal | 1800x1200 JPEG | 1.06 s warm | 495 MB |
+| EdgeTAM -> crop -> RealESRGAN x4 -> alpha | 64x64 PNG to 256x160 RGBA | 1.48 s | 493 MB |
 | Depth Anything 3 Base Q4_K | 512x512 PNG + pose | 8.18 s cold | 644 MB |
 | CLIP zero-shot classification | 512x512 PNG, 3 labels | 0.10 s warm | 193 MB |
 | SD 1.5 Q4 text-to-image | 512x512, 8 steps | 15.75 s | 3.39 GB |

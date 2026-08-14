@@ -11,7 +11,8 @@ The repository currently provides the model-independent runtime foundation,
 native PNG/JPEG/WebP/BMP/TGA codecs, promptable SAM 2/SAM 3/EdgeTAM
 segmentation, transparent background removal, diffusion generation and editing,
 Depth Anything 2/3 estimation with optional camera pose, CLIP image/text
-embeddings and zero-shot classification, and ESRGAN upscaling.
+embeddings and zero-shot classification, ESRGAN upscaling, and a typed
+segment-to-cutout workflow.
 See [the architecture](docs/architecture.md) for the
 project boundary and roadmap.
 
@@ -77,7 +78,17 @@ segmentation:
 cmake --build build --target imagecpp_model_edgetam
 ./build/imagecpp segment models/edgetam_q4_0.ggml input.jpg mask.png --point 640,420
 ./build/imagecpp remove-background models/edgetam_q4_0.ggml input.jpg cutout.png --box 120,80,1100,760
+
+./build/imagecpp cutout models/edgetam_q4_0.ggml input.jpg cutout-4x.png \
+  --point 640,420 --padding 16 \
+  --upscaler models/RealESRGAN_x4plus_anime_6B.pth --factor 4
 ```
+
+`cutout` is one typed in-process workflow: it segments the prompt, selects the
+best mask, optionally crops with padding, upscales the still-opaque color
+image, resizes the mask, and emits transparent RGBA. Add `--keep-canvas` to
+retain the original extent. The C and C++ results also expose the final mask,
+source crop box, selected candidate, and model scores.
 
 See [models](docs/models.md) for checksums, provenance, model licensing, device
 selection, and reusable session behavior.
@@ -133,7 +144,7 @@ for (const imagecpp::OperationInfo & operation : runtime.operations()) {
 
 The C API offers the same file, memory codec, and inference operations. All ABI
 structs passed as outputs must have `struct_size` initialized by the caller.
-Every opaque image, blob, embedding, and classification result has a matching
+Every opaque image, blob, inference, and workflow result has a matching
 `imagecpp_*_destroy` function; the C++ wrapper handles all of them with RAII.
 
 ## Project status
