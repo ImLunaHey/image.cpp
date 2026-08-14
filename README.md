@@ -1,5 +1,7 @@
 # image.cpp
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 `image.cpp` is a native C/C++ runtime for local image intelligence. The goal is
 one embeddable library, one command-line tool, and eventually one server for
 generation, editing, understanding, restoration, and composable image
@@ -80,3 +82,9 @@ caller. Images allocated by the library must be released with
 The public API will evolve during the foundation phase. Model weights remain
 external assets and will use self-describing GGUF metadata or versioned package
 manifests for multi-component families.
+
+## License
+
+`image.cpp` is available under the [MIT License](LICENSE). Model weights and
+optional providers retain their own licenses, recorded separately from the
+runtime license.
