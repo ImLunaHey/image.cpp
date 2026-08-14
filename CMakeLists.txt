@@ -17,10 +17,12 @@ option(IMAGECPP_WITH_WEBP "Build WebP decoding and encoding support" ON)
 option(IMAGECPP_WITH_SAM3 "Build SAM 2/SAM 3/EdgeTAM segmentation support" ON)
 option(IMAGECPP_WITH_STABLE_DIFFUSION "Build generation, editing, and ESRGAN support" ON)
 option(IMAGECPP_WITH_DEPTH_ANYTHING "Build Depth Anything 2/3 support" ON)
+option(IMAGECPP_WITH_CLIP "Build CLIP embedding and zero-shot classification support" ON)
 set(IMAGECPP_TEST_SAM_MODEL "" CACHE FILEPATH "Optional SAM/EdgeTAM model used by integration tests")
 set(IMAGECPP_TEST_DIFFUSION_MODEL "" CACHE FILEPATH "Optional diffusion model used by integration tests")
 set(IMAGECPP_TEST_UPSCALER_MODEL "" CACHE FILEPATH "Optional ESRGAN model used by integration tests")
 set(IMAGECPP_TEST_DEPTH_MODEL "" CACHE FILEPATH "Optional Depth Anything model used by integration tests")
+set(IMAGECPP_TEST_CLIP_MODEL "" CACHE FILEPATH "Optional two-tower CLIP GGUF model used by integration tests")
 
 function(imagecpp_enable_warnings target)
     if(MSVC)
@@ -110,7 +112,7 @@ if(IMAGECPP_WITH_WEBP)
     target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_WEBP=1)
 endif()
 
-if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING)
+if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING OR IMAGECPP_WITH_CLIP)
     set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
@@ -133,6 +135,35 @@ if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_A
             set_target_properties(${ggml_target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
         endif()
     endforeach()
+endif()
+
+if(IMAGECPP_WITH_CLIP)
+    add_library(imagecpp_clip_engine STATIC external/clipcpp/clip.cpp)
+    target_compile_features(imagecpp_clip_engine PRIVATE cxx_std_17)
+    target_include_directories(imagecpp_clip_engine PRIVATE
+        external/clipcpp
+        external/stb
+    )
+    target_compile_definitions(imagecpp_clip_engine PRIVATE STB_IMAGE_STATIC)
+    target_link_libraries(imagecpp_clip_engine PRIVATE ggml::ggml)
+    set_target_properties(imagecpp_clip_engine PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+        POSITION_INDEPENDENT_CODE YES
+    )
+
+    target_sources(imagecpp PRIVATE src/provider/clip_provider.cpp)
+    target_include_directories(imagecpp PRIVATE external/clipcpp)
+    target_link_libraries(imagecpp PRIVATE imagecpp_clip_engine ggml::ggml)
+    target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_CLIP=1)
+
+    imagecpp_add_model_download(
+        imagecpp_model_clip
+        clip-vit-b-32-laion2b-q4_0.gguf
+        "https://huggingface.co/mys/ggml_CLIP-ViT-B-32-laion2B-s34B-b79K/resolve/main/CLIP-ViT-B-32-laion2B-s34B-b79K_ggml-model-q4_0.gguf"
+        66aa926f26c468a5eb400e97b8bbcf80444f6f0fc59d6927f8bea47548a04ce2
+        "LAION CLIP ViT-B/32 Q4_0"
+    )
 endif()
 
 if(IMAGECPP_WITH_DEPTH_ANYTHING)
@@ -262,7 +293,8 @@ add_custom_target(imagecpp_models_starter)
 foreach(IMAGECPP_STARTER_MODEL_TARGET
         imagecpp_model_edgetam
         imagecpp_model_depth_anything
-        imagecpp_model_realesrgan)
+        imagecpp_model_realesrgan
+        imagecpp_model_clip)
     if(TARGET ${IMAGECPP_STARTER_MODEL_TARGET})
         add_dependencies(imagecpp_models_starter ${IMAGECPP_STARTER_MODEL_TARGET})
     endif()
@@ -296,6 +328,7 @@ if(IMAGECPP_BUILD_TESTS)
         $<$<BOOL:${IMAGECPP_WITH_SAM3}>:IMAGECPP_TEST_WITH_SAM3=1>
         $<$<BOOL:${IMAGECPP_WITH_STABLE_DIFFUSION}>:IMAGECPP_TEST_WITH_STABLE_DIFFUSION=1>
         $<$<BOOL:${IMAGECPP_WITH_DEPTH_ANYTHING}>:IMAGECPP_TEST_WITH_DEPTH_ANYTHING=1>
+        $<$<BOOL:${IMAGECPP_WITH_CLIP}>:IMAGECPP_TEST_WITH_CLIP=1>
     )
     imagecpp_enable_warnings(imagecpp_tests)
     add_test(NAME imagecpp.unit COMMAND imagecpp_tests)
@@ -358,6 +391,26 @@ if(IMAGECPP_BUILD_TESTS)
             )
             set_tests_properties(imagecpp.cli.depth-model PROPERTIES TIMEOUT 60)
         endif()
+        if(IMAGECPP_WITH_CLIP AND IMAGECPP_TEST_CLIP_MODEL)
+            add_executable(imagecpp_clip_c_api_test tests/test_clip_c_api.c)
+            target_link_libraries(imagecpp_clip_c_api_test PRIVATE imagecpp::imagecpp)
+            target_compile_definitions(imagecpp_clip_c_api_test PRIVATE
+                "IMAGECPP_TEST_CLIP_MODEL_PATH=\"${IMAGECPP_TEST_CLIP_MODEL}\""
+                "IMAGECPP_TEST_IMAGE_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/tests/data/2x2.ppm\""
+            )
+            imagecpp_enable_warnings(imagecpp_clip_c_api_test)
+            set_target_properties(imagecpp_clip_c_api_test PROPERTIES LINKER_LANGUAGE CXX)
+            add_test(NAME imagecpp.c-api.clip-model COMMAND imagecpp_clip_c_api_test)
+            set_tests_properties(imagecpp.c-api.clip-model PROPERTIES TIMEOUT 60)
+            add_test(
+                NAME imagecpp.cli.classify-model
+                COMMAND imagecpp_cli classify
+                    "${IMAGECPP_TEST_CLIP_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/2x2.ppm"
+                    cat dog car
+            )
+            set_tests_properties(imagecpp.cli.classify-model PROPERTIES TIMEOUT 60)
+        endif()
     endif()
 endif()
 
@@ -368,7 +421,7 @@ install(TARGETS imagecpp
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
-if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING)
+if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING OR IMAGECPP_WITH_CLIP)
     set(IMAGECPP_GGML_TARGETS ggml ggml-base)
     foreach(backend IN LISTS GGML_AVAILABLE_BACKENDS)
         if(TARGET ${backend})
@@ -406,6 +459,14 @@ if(IMAGECPP_WITH_DEPTH_ANYTHING)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 endif()
+if(IMAGECPP_WITH_CLIP)
+    install(TARGETS imagecpp_clip_engine
+        EXPORT imagecppTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
 if(IMAGECPP_BUILD_CLI)
     install(TARGETS imagecpp_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
@@ -416,7 +477,7 @@ install(FILES external/libwebp/COPYING DESTINATION ${CMAKE_INSTALL_DATADIR}/imag
 if(IMAGECPP_WITH_SAM3)
     install(FILES external/sam3/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME sam3.cpp.txt)
 endif()
-if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING)
+if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING OR IMAGECPP_WITH_CLIP)
     install(FILES external/ggml/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME ggml.txt)
 endif()
 if(IMAGECPP_WITH_STABLE_DIFFUSION)
@@ -424,6 +485,9 @@ if(IMAGECPP_WITH_STABLE_DIFFUSION)
 endif()
 if(IMAGECPP_WITH_DEPTH_ANYTHING)
     install(FILES external/depth-anything/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME depth-anything.cpp.txt)
+endif()
+if(IMAGECPP_WITH_CLIP)
+    install(FILES external/clipcpp/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME clip.cpp.txt)
 endif()
 
 write_basic_package_version_file(

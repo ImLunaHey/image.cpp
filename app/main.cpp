@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -26,6 +27,9 @@ void print_usage(std::ostream &output) {
            << "  imagecpp edit <model> <input-image> <output-image> <prompt> [generation options]\n"
            << "  imagecpp upscale <model> <input-image> <output-image> [upscale options]\n"
            << "  imagecpp depth <model> <input-image> <output-image> [--pose] [--no-invert] [--threads N]\n"
+           << "  imagecpp embed-image <model> <input-image> [--threads N]\n"
+           << "  imagecpp embed-text <model> <text> [--threads N]\n"
+           << "  imagecpp classify <model> <input-image> <label> [label ...] [--threads N]\n"
            << "\nprompt options:\n"
            << "  --point <x>,<y>        positive point (repeatable)\n"
            << "  --negative <x>,<y>     negative point (repeatable)\n"
@@ -291,6 +295,102 @@ int resize_image(int argc, char **argv) {
     return 0;
 }
 
+int32_t parse_optional_threads(int argc, char **argv, int first_option) {
+    int32_t threads = 0;
+    for (int index = first_option; index < argc; ++index) {
+        if (std::string(argv[index]) != "--threads" || ++index >= argc) {
+            throw std::runtime_error("expected --threads <count>");
+        }
+        const uint32_t count = parse_size_part(argv[index], "thread count");
+        if (count > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
+            throw std::runtime_error("thread count is too large");
+        }
+        threads = static_cast<int32_t>(count);
+    }
+    return threads;
+}
+
+imagecpp::Model load_clip_model(const imagecpp::Runtime &runtime, const std::string &model_path, int32_t threads,
+                                const char *operation) {
+    imagecpp_model_options options{};
+    imagecpp_model_options_init(&options);
+    options.model_path = model_path.c_str();
+    options.threads = threads;
+    options.device = IMAGECPP_DEVICE_CPU;
+    return imagecpp::Model(runtime, operation, options);
+}
+
+void print_embedding(const imagecpp::EmbeddingResult &embedding) {
+    std::cout << "{\"dimension\":" << embedding.size() << ",\"embedding\":[";
+    std::cout << std::setprecision(9);
+    for (size_t index = 0; index < embedding.size(); ++index) {
+        if (index != 0) {
+            std::cout << ',';
+        }
+        std::cout << embedding.data()[index];
+    }
+    std::cout << "]}\n";
+}
+
+int embed_image_command(int argc, char **argv) {
+    if (argc < 4) {
+        throw std::runtime_error("embed-image requires a model and input image");
+    }
+    const int32_t threads = parse_optional_threads(argc, argv, 4);
+    imagecpp::Runtime runtime;
+    imagecpp::Model model = load_clip_model(runtime, argv[2], threads, "image.embed.clip");
+    imagecpp::Image image = imagecpp::load(argv[3]);
+    print_embedding(imagecpp::embed_image(model, image));
+    return 0;
+}
+
+int embed_text_command(int argc, char **argv) {
+    if (argc < 4) {
+        throw std::runtime_error("embed-text requires a model and text");
+    }
+    const int32_t threads = parse_optional_threads(argc, argv, 4);
+    imagecpp::Runtime runtime;
+    imagecpp::Model model = load_clip_model(runtime, argv[2], threads, "image.embed.clip");
+    print_embedding(imagecpp::embed_text(model, argv[3]));
+    return 0;
+}
+
+int classify_command(int argc, char **argv) {
+    if (argc < 5) {
+        throw std::runtime_error("classify requires a model, input image, and at least one label");
+    }
+    std::vector<std::string> labels;
+    int32_t threads = 0;
+    for (int index = 4; index < argc; ++index) {
+        if (std::string(argv[index]) == "--threads") {
+            if (++index >= argc || index + 1 != argc) {
+                throw std::runtime_error("--threads must be the final option and requires a count");
+            }
+            const uint32_t count = parse_size_part(argv[index], "thread count");
+            if (count > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
+                throw std::runtime_error("thread count is too large");
+            }
+            threads = static_cast<int32_t>(count);
+        } else {
+            labels.emplace_back(argv[index]);
+        }
+    }
+    if (labels.empty()) {
+        throw std::runtime_error("classify requires at least one label");
+    }
+
+    imagecpp::Runtime runtime;
+    imagecpp::Model model = load_clip_model(runtime, argv[2], threads, "image.classify.clip");
+    imagecpp::Image image = imagecpp::load(argv[3]);
+    imagecpp::ClassificationResult result = imagecpp::classify(model, image, labels);
+    std::cout << std::fixed << std::setprecision(6);
+    for (size_t index = 0; index < result.size(); ++index) {
+        const imagecpp::ClassificationInfo item = result.at(index);
+        std::cout << item.label << '\t' << item.score << '\n';
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -318,6 +418,15 @@ int main(int argc, char **argv) {
         }
         if (argc >= 2 && std::string(argv[1]) == "depth") {
             return depth_command(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "embed-image") {
+            return embed_image_command(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "embed-text") {
+            return embed_text_command(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "classify") {
+            return classify_command(argc, argv);
         }
         print_usage(argc == 1 ? std::cout : std::cerr);
         return argc == 1 ? 0 : 2;

@@ -31,6 +31,14 @@ struct imagecpp_depth_result {
     imagecpp::detail::DepthOutput output;
 };
 
+struct imagecpp_embedding_result {
+    std::vector<float> values;
+};
+
+struct imagecpp_classification_result {
+    std::vector<imagecpp::detail::ClassificationOutput> outputs;
+};
+
 namespace imagecpp::detail {
 namespace {
 
@@ -47,7 +55,7 @@ imagecpp_status translate_exception(imagecpp_error *error, const std::exception 
     return core::fail(error, IMAGECPP_STATUS_INTERNAL, exception.what());
 }
 
-#if defined(IMAGECPP_WITH_SAM3) || defined(IMAGECPP_WITH_DEPTH_ANYTHING)
+#if defined(IMAGECPP_WITH_SAM3) || defined(IMAGECPP_WITH_DEPTH_ANYTHING) || defined(IMAGECPP_WITH_CLIP)
 const imagecpp_model_options &validate_model_options(const imagecpp_model_options *options) {
     if (options == nullptr || options->struct_size < sizeof(imagecpp_model_options)) {
         throw std::invalid_argument("model options are null or too small");
@@ -197,6 +205,18 @@ ImageOutput Model::upscale(const imagecpp_const_image_view &, uint32_t) {
 DepthOutput Model::depth(const imagecpp_const_image_view &, bool) {
     throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support depth estimation");
 }
+
+std::vector<float> Model::embed_image(const imagecpp_const_image_view &) {
+    throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support image embeddings");
+}
+
+std::vector<float> Model::embed_text(const std::string &) {
+    throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support text embeddings");
+}
+
+std::vector<ClassificationOutput> Model::classify(const imagecpp_const_image_view &, const std::vector<std::string> &) {
+    throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support image classification");
+}
 } // namespace imagecpp::detail
 
 extern "C" {
@@ -263,6 +283,15 @@ imagecpp_status imagecpp_model_load(const imagecpp_runtime *runtime, const char 
             (void)options;
             return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED,
                                         "Depth Anything support is not compiled in");
+#endif
+        } else if (std::string_view(operation_id) == "image.embed.clip" ||
+                   std::string_view(operation_id) == "image.classify.clip") {
+#if defined(IMAGECPP_WITH_CLIP)
+            const imagecpp_model_options &settings = imagecpp::detail::validate_model_options(options);
+            implementation = imagecpp::detail::load_clip_model(settings);
+#else
+            (void)options;
+            return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED, "CLIP support is not compiled in");
 #endif
         } else {
             return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED, "operation has no model loader");
@@ -649,5 +678,133 @@ imagecpp_status imagecpp_depth_result_info(const imagecpp_depth_result *result, 
 }
 
 void imagecpp_depth_result_destroy(imagecpp_depth_result *result) { delete result; }
+
+imagecpp_status imagecpp_embed_image(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                     imagecpp_embedding_result **output, imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output embedding pointer is null");
+    }
+    *output = nullptr;
+    if (model == nullptr || model->implementation == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "model is null");
+    }
+    imagecpp::detail::ImageLayout layout;
+    const imagecpp_status status = imagecpp::detail::validate_const_view(image, layout, error);
+    if (status != IMAGECPP_STATUS_OK) {
+        return status;
+    }
+    try {
+        auto result = std::make_unique<imagecpp_embedding_result>();
+        result->values = model->implementation->embed_image(*image);
+        if (result->values.empty()) {
+            throw imagecpp::detail::Failure(IMAGECPP_STATUS_MODEL_ERROR, "image embedding is empty");
+        }
+        *output = result.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected image embedding failure");
+    }
+}
+
+imagecpp_status imagecpp_embed_text(const imagecpp_model *model, const char *text, imagecpp_embedding_result **output,
+                                    imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output embedding pointer is null");
+    }
+    *output = nullptr;
+    if (model == nullptr || model->implementation == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "model is null");
+    }
+    if (text == nullptr || text[0] == '\0') {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "embedding text is empty");
+    }
+    try {
+        auto result = std::make_unique<imagecpp_embedding_result>();
+        result->values = model->implementation->embed_text(text);
+        if (result->values.empty()) {
+            throw imagecpp::detail::Failure(IMAGECPP_STATUS_MODEL_ERROR, "text embedding is empty");
+        }
+        *output = result.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected text embedding failure");
+    }
+}
+
+size_t imagecpp_embedding_result_size(const imagecpp_embedding_result *result) {
+    return result == nullptr ? 0 : result->values.size();
+}
+
+const float *imagecpp_embedding_result_data(const imagecpp_embedding_result *result) {
+    return result == nullptr || result->values.empty() ? nullptr : result->values.data();
+}
+
+void imagecpp_embedding_result_destroy(imagecpp_embedding_result *result) { delete result; }
+
+imagecpp_status imagecpp_classify(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                  const char *const *labels, size_t label_count,
+                                  imagecpp_classification_result **output, imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output classification pointer is null");
+    }
+    *output = nullptr;
+    if (model == nullptr || model->implementation == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "model is null");
+    }
+    if (labels == nullptr || label_count == 0) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "classification labels are empty");
+    }
+    imagecpp::detail::ImageLayout layout;
+    const imagecpp_status status = imagecpp::detail::validate_const_view(image, layout, error);
+    if (status != IMAGECPP_STATUS_OK) {
+        return status;
+    }
+    try {
+        std::vector<std::string> copied_labels;
+        copied_labels.reserve(label_count);
+        for (size_t index = 0; index < label_count; ++index) {
+            if (labels[index] == nullptr || labels[index][0] == '\0') {
+                throw std::invalid_argument("classification labels cannot be empty");
+            }
+            copied_labels.emplace_back(labels[index]);
+        }
+        auto result = std::make_unique<imagecpp_classification_result>();
+        result->outputs = model->implementation->classify(*image, copied_labels);
+        if (result->outputs.size() != label_count) {
+            throw imagecpp::detail::Failure(IMAGECPP_STATUS_MODEL_ERROR,
+                                            "classification returned the wrong number of scores");
+        }
+        *output = result.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected classification failure");
+    }
+}
+
+size_t imagecpp_classification_result_count(const imagecpp_classification_result *result) {
+    return result == nullptr ? 0 : result->outputs.size();
+}
+
+imagecpp_status imagecpp_classification_result_info(const imagecpp_classification_result *result, size_t index,
+                                                    imagecpp_classification_info *output, imagecpp_error *error) {
+    if (result == nullptr || output == nullptr || output->struct_size < sizeof(imagecpp_classification_info)) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT,
+                                    "classification result or output is null or too small");
+    }
+    if (index >= result->outputs.size()) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_OUT_OF_RANGE, "classification result index is out of range");
+    }
+    const imagecpp::detail::ClassificationOutput &item = result->outputs[index];
+    *output = {sizeof(imagecpp_classification_info), item.label_index, item.label.c_str(), item.score};
+    return imagecpp::core::succeed(error);
+}
+
+void imagecpp_classification_result_destroy(imagecpp_classification_result *result) { delete result; }
 
 } // extern "C"

@@ -60,6 +60,24 @@ imagecpp_status imagecpp_runtime_create(imagecpp_runtime **output, imagecpp_erro
             IMAGECPP_ARTIFACT_DEPTH_MAP,
         });
 #endif
+#if defined(IMAGECPP_WITH_CLIP)
+        runtime->operations.push_back({
+            "image.embed.clip",
+            "Embed image or text with CLIP",
+            "Normalized joint image and text embeddings with two-tower CLIP models",
+            IMAGECPP_TASK_EMBED,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_EMBEDDING,
+        });
+        runtime->operations.push_back({
+            "image.classify.clip",
+            "Classify with CLIP",
+            "Zero-shot image classification over caller-provided labels",
+            IMAGECPP_TASK_CLASSIFY,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_METADATA,
+        });
+#endif
 #if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
         runtime->operations.push_back({
             "image.generate.diffusion",

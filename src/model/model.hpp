@@ -72,6 +72,12 @@ struct DepthOutput {
     float intrinsics[9]{};
 };
 
+struct ClassificationOutput {
+    size_t label_index = 0;
+    std::string label;
+    float score = 0.0F;
+};
+
 class Session {
   public:
     virtual ~Session() = default;
@@ -86,7 +92,15 @@ class Model {
     virtual std::vector<ImageOutput> generate(const GenerateRequest &request);
     virtual ImageOutput upscale(const imagecpp_const_image_view &image, uint32_t factor);
     virtual DepthOutput depth(const imagecpp_const_image_view &image, bool include_pose);
+    virtual std::vector<float> embed_image(const imagecpp_const_image_view &image);
+    virtual std::vector<float> embed_text(const std::string &text);
+    virtual std::vector<ClassificationOutput> classify(const imagecpp_const_image_view &image,
+                                                       const std::vector<std::string> &labels);
 };
+
+#if defined(IMAGECPP_WITH_CLIP)
+std::shared_ptr<Model> load_clip_model(const imagecpp_model_options &options);
+#endif
 
 #if defined(IMAGECPP_WITH_SAM3)
 std::shared_ptr<Model> load_sam3_model(const imagecpp_model_options &options);

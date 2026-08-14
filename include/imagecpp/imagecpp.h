@@ -262,6 +262,13 @@ typedef struct imagecpp_segment_info {
     float iou_score;
 } imagecpp_segment_info;
 
+typedef struct imagecpp_classification_info {
+    size_t struct_size;
+    size_t label_index;
+    const char *label;
+    float score;
+} imagecpp_classification_info;
+
 typedef struct imagecpp_operation_info {
     size_t struct_size;
     const char *id;
@@ -280,6 +287,8 @@ typedef struct imagecpp_session imagecpp_session;
 typedef struct imagecpp_segment_result imagecpp_segment_result;
 typedef struct imagecpp_image_result imagecpp_image_result;
 typedef struct imagecpp_depth_result imagecpp_depth_result;
+typedef struct imagecpp_embedding_result imagecpp_embedding_result;
+typedef struct imagecpp_classification_result imagecpp_classification_result;
 
 IMAGECPP_API uint32_t imagecpp_version(void);
 IMAGECPP_API const char *imagecpp_version_string(void);
@@ -363,6 +372,23 @@ IMAGECPP_API imagecpp_status imagecpp_depth(const imagecpp_model *model, const i
 IMAGECPP_API imagecpp_status imagecpp_depth_result_info(const imagecpp_depth_result *result,
                                                         imagecpp_depth_info *output, imagecpp_error *error);
 IMAGECPP_API void imagecpp_depth_result_destroy(imagecpp_depth_result *result);
+
+IMAGECPP_API imagecpp_status imagecpp_embed_image(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                                  imagecpp_embedding_result **output, imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_embed_text(const imagecpp_model *model, const char *text,
+                                                 imagecpp_embedding_result **output, imagecpp_error *error);
+IMAGECPP_API size_t imagecpp_embedding_result_size(const imagecpp_embedding_result *result);
+IMAGECPP_API const float *imagecpp_embedding_result_data(const imagecpp_embedding_result *result);
+IMAGECPP_API void imagecpp_embedding_result_destroy(imagecpp_embedding_result *result);
+
+IMAGECPP_API imagecpp_status imagecpp_classify(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                               const char *const *labels, size_t label_count,
+                                               imagecpp_classification_result **output, imagecpp_error *error);
+IMAGECPP_API size_t imagecpp_classification_result_count(const imagecpp_classification_result *result);
+IMAGECPP_API imagecpp_status imagecpp_classification_result_info(const imagecpp_classification_result *result,
+                                                                 size_t index, imagecpp_classification_info *output,
+                                                                 imagecpp_error *error);
+IMAGECPP_API void imagecpp_classification_result_destroy(imagecpp_classification_result *result);
 
 IMAGECPP_API imagecpp_status imagecpp_resize(const imagecpp_const_image_view *source,
                                              const imagecpp_image_view *destination, imagecpp_resize_filter filter,

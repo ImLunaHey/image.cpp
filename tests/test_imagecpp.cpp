@@ -67,6 +67,9 @@ void test_version_and_runtime() {
 #if defined(IMAGECPP_TEST_WITH_DEPTH_ANYTHING)
     expected_count += 1;
 #endif
+#if defined(IMAGECPP_TEST_WITH_CLIP)
+    expected_count += 2;
+#endif
 #if defined(IMAGECPP_TEST_WITH_STABLE_DIFFUSION)
     expected_count += 3;
 #endif
@@ -84,6 +87,14 @@ void test_version_and_runtime() {
 #if defined(IMAGECPP_TEST_WITH_DEPTH_ANYTHING)
     require(operations[index].id == "image.depth.depth-anything", "runtime should expose Depth Anything");
     require(operations[index].task == IMAGECPP_TASK_DEPTH, "Depth Anything operation task mismatch");
+    ++index;
+#endif
+#if defined(IMAGECPP_TEST_WITH_CLIP)
+    require(operations[index].id == "image.embed.clip", "runtime should expose CLIP embeddings");
+    require(operations[index].task == IMAGECPP_TASK_EMBED, "CLIP embedding operation task mismatch");
+    ++index;
+    require(operations[index].id == "image.classify.clip", "runtime should expose CLIP classification");
+    require(operations[index].task == IMAGECPP_TASK_CLASSIFY, "CLIP classification operation task mismatch");
     ++index;
 #endif
 #if defined(IMAGECPP_TEST_WITH_STABLE_DIFFUSION)

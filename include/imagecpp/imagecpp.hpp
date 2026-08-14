@@ -279,6 +279,108 @@ class Model final {
     imagecpp_model *handle_ = nullptr;
 };
 
+class EmbeddingResult final {
+  public:
+    ~EmbeddingResult() { imagecpp_embedding_result_destroy(handle_); }
+
+    EmbeddingResult(const EmbeddingResult &) = delete;
+    EmbeddingResult &operator=(const EmbeddingResult &) = delete;
+    EmbeddingResult(EmbeddingResult &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    EmbeddingResult &operator=(EmbeddingResult &&other) noexcept {
+        if (this != &other) {
+            imagecpp_embedding_result_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    size_t size() const noexcept { return imagecpp_embedding_result_size(handle_); }
+    const float *data() const noexcept { return imagecpp_embedding_result_data(handle_); }
+    std::vector<float> values() const {
+        const float *begin = data();
+        return begin == nullptr ? std::vector<float>{} : std::vector<float>(begin, begin + size());
+    }
+
+  private:
+    explicit EmbeddingResult(imagecpp_embedding_result *handle) noexcept : handle_(handle) {}
+    friend EmbeddingResult embed_image(const Model &, const imagecpp_const_image_view &);
+    friend EmbeddingResult embed_text(const Model &, const std::string &);
+    imagecpp_embedding_result *handle_ = nullptr;
+};
+
+inline EmbeddingResult embed_image(const Model &model, const imagecpp_const_image_view &image) {
+    imagecpp_embedding_result *result = nullptr;
+    imagecpp_error error{};
+    check(imagecpp_embed_image(model.get(), &image, &result, &error), error);
+    return EmbeddingResult(result);
+}
+
+inline EmbeddingResult embed_image(const Model &model, const Image &image) { return embed_image(model, image.view()); }
+
+inline EmbeddingResult embed_text(const Model &model, const std::string &text) {
+    imagecpp_embedding_result *result = nullptr;
+    imagecpp_error error{};
+    check(imagecpp_embed_text(model.get(), text.c_str(), &result, &error), error);
+    return EmbeddingResult(result);
+}
+
+struct ClassificationInfo {
+    size_t label_index = 0;
+    std::string label;
+    float score = 0.0F;
+};
+
+class ClassificationResult final {
+  public:
+    ~ClassificationResult() { imagecpp_classification_result_destroy(handle_); }
+
+    ClassificationResult(const ClassificationResult &) = delete;
+    ClassificationResult &operator=(const ClassificationResult &) = delete;
+    ClassificationResult(ClassificationResult &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    ClassificationResult &operator=(ClassificationResult &&other) noexcept {
+        if (this != &other) {
+            imagecpp_classification_result_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    size_t size() const noexcept { return imagecpp_classification_result_count(handle_); }
+
+    ClassificationInfo at(size_t index) const {
+        imagecpp_classification_info info{};
+        info.struct_size = sizeof(info);
+        imagecpp_error error{};
+        check(imagecpp_classification_result_info(handle_, index, &info, &error), error);
+        return {info.label_index, info.label == nullptr ? "" : info.label, info.score};
+    }
+
+  private:
+    explicit ClassificationResult(imagecpp_classification_result *handle) noexcept : handle_(handle) {}
+    friend ClassificationResult classify(const Model &, const imagecpp_const_image_view &,
+                                         const std::vector<std::string> &);
+    imagecpp_classification_result *handle_ = nullptr;
+};
+
+inline ClassificationResult classify(const Model &model, const imagecpp_const_image_view &image,
+                                     const std::vector<std::string> &labels) {
+    std::vector<const char *> label_pointers;
+    label_pointers.reserve(labels.size());
+    for (const std::string &label : labels) {
+        label_pointers.push_back(label.c_str());
+    }
+    imagecpp_classification_result *result = nullptr;
+    imagecpp_error error{};
+    check(imagecpp_classify(model.get(), &image, label_pointers.data(), label_pointers.size(), &result, &error), error);
+    return ClassificationResult(result);
+}
+
+inline ClassificationResult classify(const Model &model, const Image &image, const std::vector<std::string> &labels) {
+    return classify(model, image.view(), labels);
+}
+
 class ImageResult final {
   public:
     ~ImageResult() { imagecpp_image_result_destroy(handle_); }
