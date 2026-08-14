@@ -1,4 +1,5 @@
 #include "depth_command.hpp"
+#include "detect_command.hpp"
 #include "imagecpp/imagecpp.hpp"
 #include "model_commands.hpp"
 
@@ -32,6 +33,8 @@ void print_usage(std::ostream &output) {
            << "  imagecpp embed-image <model> <input-image> [--threads N]\n"
            << "  imagecpp embed-text <model> <text> [--threads N]\n"
            << "  imagecpp classify <model> <input-image> <label> [label ...] [--threads N]\n"
+           << "  imagecpp detect <model> <input-image> <text-prompt> [detection options]\n"
+           << "  imagecpp ground <model> <input-image> <output-mask> <text-prompt> [detection options]\n"
            << "\nprompt options:\n"
            << "  --point <x>,<y>        positive point (repeatable)\n"
            << "  --negative <x>,<y>     negative point (repeatable)\n"
@@ -45,6 +48,7 @@ void print_usage(std::ostream &output) {
            << "  --threads <count>      CPU worker threads\n"
            << "\nformats: PNG, JPEG, WebP, BMP, and TGA (selected by output extension)\n";
     print_model_command_usage(output);
+    print_detect_command_usage(output);
 }
 
 uint32_t parse_size_part(const std::string &value, const char *name) {
@@ -477,6 +481,12 @@ int main(int argc, char **argv) {
         }
         if (argc >= 2 && std::string(argv[1]) == "classify") {
             return classify_command(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "detect") {
+            return detect_image_command(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "ground") {
+            return ground_image_command(argc, argv);
         }
         print_usage(argc == 1 ? std::cout : std::cerr);
         return argc == 1 ? 0 : 2;

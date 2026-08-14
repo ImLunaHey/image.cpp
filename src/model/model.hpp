@@ -36,6 +36,24 @@ struct SegmentOutput {
     float iou_score = 0.0F;
 };
 
+struct DetectRequest {
+    std::string prompt;
+    std::vector<imagecpp_box> positive_exemplars;
+    std::vector<imagecpp_box> negative_exemplars;
+    float score_threshold = 0.5F;
+    float nms_threshold = 0.1F;
+};
+
+struct DetectionOutput {
+    std::string label;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<uint8_t> mask;
+    imagecpp_box box{};
+    float score = 0.0F;
+    float iou_score = 0.0F;
+};
+
 struct GenerateRequest {
     std::string prompt;
     std::string negative_prompt;
@@ -83,6 +101,7 @@ class Session {
     virtual ~Session() = default;
     virtual void set_image(const imagecpp_const_image_view &image) = 0;
     virtual std::vector<SegmentOutput> segment(const SegmentRequest &request) = 0;
+    virtual std::vector<DetectionOutput> detect(const DetectRequest &request);
 };
 
 class Model {
@@ -103,7 +122,7 @@ std::shared_ptr<Model> load_clip_model(const imagecpp_model_options &options);
 #endif
 
 #if defined(IMAGECPP_WITH_SAM3)
-std::shared_ptr<Model> load_sam3_model(const imagecpp_model_options &options);
+std::shared_ptr<Model> load_sam3_model(const imagecpp_model_options &options, bool require_text_detection = false);
 #endif
 #if defined(IMAGECPP_WITH_DEPTH_ANYTHING)
 std::shared_ptr<Model> load_depth_anything_model(const imagecpp_model_options &options);

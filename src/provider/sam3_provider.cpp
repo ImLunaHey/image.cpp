@@ -125,10 +125,62 @@ class SamSession final : public Session {
         return outputs;
     }
 
+    std::vector<DetectionOutput> detect(const DetectRequest &request) override {
+        if (!ready_) {
+            throw Failure(IMAGECPP_STATUS_NOT_READY, "session has no encoded image");
+        }
+        if (sam3_is_visual_only(*model_)) {
+            throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "text-prompted detection requires a full SAM 3 model");
+        }
+
+        sam3_pcs_params parameters;
+        parameters.text_prompt = request.prompt;
+        parameters.score_threshold = request.score_threshold;
+        parameters.nms_threshold = request.nms_threshold;
+        for (const imagecpp_box &box : request.positive_exemplars) {
+            validate_box(box);
+            parameters.pos_exemplars.push_back({box.x0, box.y0, box.x1, box.y1});
+        }
+        for (const imagecpp_box &box : request.negative_exemplars) {
+            validate_box(box);
+            parameters.neg_exemplars.push_back({box.x0, box.y0, box.x1, box.y1});
+        }
+
+        sam3_result provider_result = sam3_segment_pcs(*state_, *model_, parameters);
+        std::vector<DetectionOutput> outputs;
+        outputs.reserve(provider_result.detections.size());
+        for (sam3_detection &detection : provider_result.detections) {
+            if (detection.mask.width <= 0 || detection.mask.height <= 0 ||
+                detection.mask.data.size() !=
+                    static_cast<size_t>(detection.mask.width) * static_cast<size_t>(detection.mask.height)) {
+                throw Failure(IMAGECPP_STATUS_MODEL_ERROR, "SAM 3 provider returned an invalid detection mask");
+            }
+            outputs.push_back({
+                request.prompt,
+                static_cast<uint32_t>(detection.mask.width),
+                static_cast<uint32_t>(detection.mask.height),
+                std::move(detection.mask.data),
+                {detection.box.x0, detection.box.y0, detection.box.x1, detection.box.y1},
+                detection.score,
+                detection.iou_score,
+            });
+        }
+        std::sort(outputs.begin(), outputs.end(),
+                  [](const DetectionOutput &left, const DetectionOutput &right) { return left.score > right.score; });
+        return outputs;
+    }
+
   private:
     void validate_point(float x, float y) const {
         if (x < 0.0F || y < 0.0F || x >= static_cast<float>(width_) || y >= static_cast<float>(height_)) {
             throw Failure(IMAGECPP_STATUS_OUT_OF_RANGE, "SAM prompt coordinates are outside the encoded image");
+        }
+    }
+
+    void validate_box(const imagecpp_box &box) const {
+        validate_point(box.x0, box.y0);
+        if (box.x1 > static_cast<float>(width_) || box.y1 > static_cast<float>(height_)) {
+            throw Failure(IMAGECPP_STATUS_OUT_OF_RANGE, "SAM 3 exemplar box extends outside the encoded image");
         }
     }
 
@@ -141,7 +193,7 @@ class SamSession final : public Session {
 
 class SamModel final : public Model {
   public:
-    explicit SamModel(const imagecpp_model_options &options) {
+    SamModel(const imagecpp_model_options &options, bool require_text_detection) {
 #if !defined(GGML_USE_METAL)
         if (options.device == IMAGECPP_DEVICE_GPU) {
             throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this SAM provider build has no GPU backend");
@@ -155,6 +207,11 @@ class SamModel final : public Model {
         model_ = sam3_load_model(parameters_);
         if (model_ == nullptr) {
             throw Failure(IMAGECPP_STATUS_MODEL_ERROR, "failed to load SAM model; check its path and format");
+        }
+        if (require_text_detection && sam3_is_visual_only(*model_)) {
+            sam3_free_model(*model_);
+            model_.reset();
+            throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "text-prompted detection requires a full SAM 3 model");
         }
     }
 
@@ -173,8 +230,8 @@ class SamModel final : public Model {
 
 } // namespace
 
-std::shared_ptr<Model> load_sam3_model(const imagecpp_model_options &options) {
-    return std::make_shared<SamModel>(options);
+std::shared_ptr<Model> load_sam3_model(const imagecpp_model_options &options, bool require_text_detection) {
+    return std::make_shared<SamModel>(options, require_text_detection);
 }
 
 } // namespace imagecpp::detail

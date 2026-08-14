@@ -42,6 +42,14 @@ imagecpp_status imagecpp_runtime_create(imagecpp_runtime **output, imagecpp_erro
         });
 #if defined(IMAGECPP_WITH_SAM3)
         runtime->operations.push_back({
+            "image.detect.sam3",
+            "Detect and ground with SAM 3",
+            "Open-vocabulary text and exemplar detection with instance boxes and masks",
+            IMAGECPP_TASK_DETECT,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_BOXES,
+        });
+        runtime->operations.push_back({
             "image.segment.sam",
             "Segment with SAM",
             "Point- and box-prompted segmentation with SAM 2, SAM 3, or EdgeTAM",

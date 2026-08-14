@@ -522,6 +522,49 @@ class SegmentResult final {
     imagecpp_segment_result *handle_ = nullptr;
 };
 
+struct DetectionInfo {
+    std::string label;
+    imagecpp_box box{};
+    imagecpp_const_image_view mask{};
+    float score = 0.0F;
+    float iou_score = 0.0F;
+};
+
+class DetectionResult final {
+  public:
+    ~DetectionResult() { imagecpp_detection_result_destroy(handle_); }
+
+    DetectionResult(const DetectionResult &) = delete;
+    DetectionResult &operator=(const DetectionResult &) = delete;
+
+    DetectionResult(DetectionResult &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    DetectionResult &operator=(DetectionResult &&other) noexcept {
+        if (this != &other) {
+            imagecpp_detection_result_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    size_t size() const noexcept { return imagecpp_detection_result_count(handle_); }
+
+    DetectionInfo at(size_t index) const {
+        imagecpp_detection_info info{};
+        info.struct_size = sizeof(info);
+        imagecpp_error error{};
+        check(imagecpp_detection_result_info(handle_, index, &info, &error), error);
+        return {info.label == nullptr ? "" : info.label, info.box, info.mask, info.score, info.iou_score};
+    }
+
+  private:
+    explicit DetectionResult(imagecpp_detection_result *handle) noexcept : handle_(handle) {}
+
+    friend class Session;
+
+    imagecpp_detection_result *handle_ = nullptr;
+};
+
 class Session final {
   public:
     explicit Session(const Model &model) {
@@ -556,6 +599,13 @@ class Session final {
         imagecpp_error error{};
         check(imagecpp_segment(handle_, &options, &result, &error), error);
         return SegmentResult(result);
+    }
+
+    DetectionResult detect(const imagecpp_detect_options &options) {
+        imagecpp_detection_result *result = nullptr;
+        imagecpp_error error{};
+        check(imagecpp_detect(handle_, &options, &result, &error), error);
+        return DetectionResult(result);
     }
 
     imagecpp_session *get() noexcept { return handle_; }

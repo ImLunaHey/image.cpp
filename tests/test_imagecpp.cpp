@@ -62,7 +62,7 @@ void test_version_and_runtime() {
     const auto operations = runtime.operations();
     size_t expected_count = 1;
 #if defined(IMAGECPP_TEST_WITH_SAM3)
-    expected_count += 2;
+    expected_count += 3;
 #endif
 #if defined(IMAGECPP_TEST_WITH_DEPTH_ANYTHING)
     expected_count += 1;
@@ -80,6 +80,9 @@ void test_version_and_runtime() {
     require(operations[index].output_kind == IMAGECPP_ARTIFACT_IMAGE, "resize should emit an image");
     ++index;
 #if defined(IMAGECPP_TEST_WITH_SAM3)
+    require(operations[index].id == "image.detect.sam3", "runtime should expose SAM 3 detection");
+    require(operations[index].task == IMAGECPP_TASK_DETECT, "SAM 3 detection task mismatch");
+    ++index;
     require(operations[index].id == "image.segment.sam", "runtime should expose image.segment.sam");
     require(operations[index].task == IMAGECPP_TASK_SEGMENT, "SAM operation task mismatch");
     ++index;
@@ -125,6 +128,12 @@ void test_model_api_validation() {
     imagecpp_segment_options segment_options{};
     imagecpp_segment_options_init(&segment_options);
     require(segment_options.struct_size == sizeof(segment_options), "segment options initializer is invalid");
+
+    imagecpp_detect_options detect_options{};
+    imagecpp_detect_options_init(&detect_options);
+    require(detect_options.struct_size == sizeof(detect_options), "detection options initializer is invalid");
+    require(detect_options.score_threshold == 0.5F && detect_options.nms_threshold == 0.1F,
+            "detection option defaults are invalid");
 
     imagecpp_cutout_options cutout_options{};
     imagecpp_cutout_options_init(&cutout_options);

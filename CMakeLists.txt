@@ -19,6 +19,7 @@ option(IMAGECPP_WITH_STABLE_DIFFUSION "Build generation, editing, and ESRGAN sup
 option(IMAGECPP_WITH_DEPTH_ANYTHING "Build Depth Anything 2/3 support" ON)
 option(IMAGECPP_WITH_CLIP "Build CLIP embedding and zero-shot classification support" ON)
 set(IMAGECPP_TEST_SAM_MODEL "" CACHE FILEPATH "Optional SAM/EdgeTAM model used by integration tests")
+set(IMAGECPP_TEST_SAM3_MODEL "" CACHE FILEPATH "Optional full SAM 3 model used by detection integration tests")
 set(IMAGECPP_TEST_DIFFUSION_MODEL "" CACHE FILEPATH "Optional diffusion model used by integration tests")
 set(IMAGECPP_TEST_UPSCALER_MODEL "" CACHE FILEPATH "Optional ESRGAN model used by integration tests")
 set(IMAGECPP_TEST_DEPTH_MODEL "" CACHE FILEPATH "Optional Depth Anything model used by integration tests")
@@ -251,6 +252,13 @@ if(IMAGECPP_WITH_SAM3)
         a8a35e35fb9a1b6f099c3f35e3024548b0fc979c2a4184642562804192496e09
         "EdgeTAM Q4"
     )
+    imagecpp_add_model_download(
+        imagecpp_model_sam3_q4
+        sam3-q4_0.ggml
+        "https://huggingface.co/PABannier/sam3.cpp/resolve/main/sam3-q4_0.ggml"
+        5dafc790c8493319f542f575e718084f4e0a452fd7e483c64853d33ffe3f1889
+        "SAM 3 Q4_0"
+    )
 endif()
 
 if(IMAGECPP_WITH_STABLE_DIFFUSION)
@@ -306,10 +314,14 @@ add_dependencies(imagecpp_models_full imagecpp_models_starter)
 if(TARGET imagecpp_model_sd15_q4)
     add_dependencies(imagecpp_models_full imagecpp_model_sd15_q4)
 endif()
+if(TARGET imagecpp_model_sam3_q4)
+    add_dependencies(imagecpp_models_full imagecpp_model_sam3_q4)
+endif()
 
 if(IMAGECPP_BUILD_CLI)
     add_executable(imagecpp_cli
         app/depth_command.cpp
+        app/detect_command.cpp
         app/main.cpp
         app/model_commands.cpp
     )
@@ -357,6 +369,37 @@ if(IMAGECPP_BUILD_TESTS)
                     "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-cli-mask.png"
                     --point 1,1
             )
+        endif()
+        if(IMAGECPP_WITH_SAM3 AND IMAGECPP_TEST_SAM3_MODEL)
+            add_executable(imagecpp_detect_c_api_test tests/test_detect_c_api.c)
+            target_link_libraries(imagecpp_detect_c_api_test PRIVATE imagecpp::imagecpp)
+            target_compile_definitions(imagecpp_detect_c_api_test PRIVATE
+                "IMAGECPP_TEST_SAM3_MODEL_PATH=\"${IMAGECPP_TEST_SAM3_MODEL}\""
+                "IMAGECPP_TEST_IMAGE_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/cat_with_sd_cpp_20184.png\""
+            )
+            imagecpp_enable_warnings(imagecpp_detect_c_api_test)
+            set_target_properties(imagecpp_detect_c_api_test PROPERTIES LINKER_LANGUAGE CXX)
+            add_test(NAME imagecpp.c-api.detect-model COMMAND imagecpp_detect_c_api_test)
+            set_tests_properties(imagecpp.c-api.detect-model PROPERTIES TIMEOUT 120)
+            add_test(
+                NAME imagecpp.cli.detect-model
+                COMMAND imagecpp_cli detect
+                    "${IMAGECPP_TEST_SAM3_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/cat_with_sd_cpp_20184.png"
+                    cat
+                    --threshold 0.3
+            )
+            set_tests_properties(imagecpp.cli.detect-model PROPERTIES TIMEOUT 120)
+            add_test(
+                NAME imagecpp.cli.ground-model
+                COMMAND imagecpp_cli ground
+                    "${IMAGECPP_TEST_SAM3_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/cat_with_sd_cpp_20184.png"
+                    "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-cli-ground-mask.png"
+                    cat
+                    --threshold 0.3
+            )
+            set_tests_properties(imagecpp.cli.ground-model PROPERTIES TIMEOUT 120)
         endif()
         if(IMAGECPP_WITH_STABLE_DIFFUSION AND IMAGECPP_TEST_DIFFUSION_MODEL)
             add_test(

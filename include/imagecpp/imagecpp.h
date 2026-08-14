@@ -263,6 +263,26 @@ typedef struct imagecpp_segment_info {
     float iou_score;
 } imagecpp_segment_info;
 
+typedef struct imagecpp_detect_options {
+    size_t struct_size;
+    const char *prompt;
+    const imagecpp_box *positive_exemplars;
+    size_t positive_exemplar_count;
+    const imagecpp_box *negative_exemplars;
+    size_t negative_exemplar_count;
+    float score_threshold;
+    float nms_threshold;
+} imagecpp_detect_options;
+
+typedef struct imagecpp_detection_info {
+    size_t struct_size;
+    const char *label;
+    imagecpp_box box;
+    imagecpp_const_image_view mask;
+    float score;
+    float iou_score;
+} imagecpp_detection_info;
+
 typedef struct imagecpp_cutout_options {
     size_t struct_size;
     imagecpp_segment_options segment;
@@ -309,6 +329,7 @@ typedef struct imagecpp_depth_result imagecpp_depth_result;
 typedef struct imagecpp_embedding_result imagecpp_embedding_result;
 typedef struct imagecpp_classification_result imagecpp_classification_result;
 typedef struct imagecpp_cutout_result imagecpp_cutout_result;
+typedef struct imagecpp_detection_result imagecpp_detection_result;
 
 IMAGECPP_API uint32_t imagecpp_version(void);
 IMAGECPP_API const char *imagecpp_version_string(void);
@@ -374,6 +395,14 @@ IMAGECPP_API size_t imagecpp_segment_result_count(const imagecpp_segment_result 
 IMAGECPP_API imagecpp_status imagecpp_segment_result_info(const imagecpp_segment_result *result, size_t index,
                                                           imagecpp_segment_info *output, imagecpp_error *error);
 IMAGECPP_API void imagecpp_segment_result_destroy(imagecpp_segment_result *result);
+
+IMAGECPP_API void imagecpp_detect_options_init(imagecpp_detect_options *options);
+IMAGECPP_API imagecpp_status imagecpp_detect(imagecpp_session *session, const imagecpp_detect_options *options,
+                                             imagecpp_detection_result **output, imagecpp_error *error);
+IMAGECPP_API size_t imagecpp_detection_result_count(const imagecpp_detection_result *result);
+IMAGECPP_API imagecpp_status imagecpp_detection_result_info(const imagecpp_detection_result *result, size_t index,
+                                                            imagecpp_detection_info *output, imagecpp_error *error);
+IMAGECPP_API void imagecpp_detection_result_destroy(imagecpp_detection_result *result);
 
 IMAGECPP_API void imagecpp_cutout_options_init(imagecpp_cutout_options *options);
 IMAGECPP_API imagecpp_status imagecpp_cutout(imagecpp_session *segment_session, const imagecpp_model *upscaler_model,

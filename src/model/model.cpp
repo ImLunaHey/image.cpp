@@ -23,6 +23,10 @@ struct imagecpp_segment_result {
     std::vector<imagecpp::detail::SegmentOutput> outputs;
 };
 
+struct imagecpp_detection_result {
+    std::vector<imagecpp::detail::DetectionOutput> outputs;
+};
+
 struct imagecpp_image_result {
     std::vector<imagecpp::detail::ImageOutput> outputs;
 };
@@ -144,6 +148,54 @@ SegmentRequest segment_request(const imagecpp_segment_options *options) {
     return request;
 }
 
+bool valid_box(const imagecpp_box &box) {
+    return std::isfinite(box.x0) && std::isfinite(box.y0) && std::isfinite(box.x1) && std::isfinite(box.y1) &&
+           box.x1 > box.x0 && box.y1 > box.y0;
+}
+
+DetectRequest detect_request(const imagecpp_detect_options *options) {
+    if (options == nullptr || options->struct_size < sizeof(imagecpp_detect_options)) {
+        throw std::invalid_argument("detection options are null or too small");
+    }
+    if (options->prompt == nullptr || options->prompt[0] == '\0' ||
+        std::string_view(options->prompt).find_first_not_of(" \t\r\n\f\v") == std::string_view::npos) {
+        throw std::invalid_argument("detection prompt is empty");
+    }
+    if ((options->positive_exemplar_count != 0 && options->positive_exemplars == nullptr) ||
+        (options->negative_exemplar_count != 0 && options->negative_exemplars == nullptr)) {
+        throw std::invalid_argument("detection exemplar box array is null");
+    }
+    if (!std::isfinite(options->score_threshold) || options->score_threshold < 0.0F ||
+        options->score_threshold > 1.0F || !std::isfinite(options->nms_threshold) || options->nms_threshold < 0.0F ||
+        options->nms_threshold > 1.0F) {
+        throw std::invalid_argument("detection score and NMS thresholds must be between zero and one");
+    }
+
+    DetectRequest request;
+    request.prompt = options->prompt;
+    if (options->positive_exemplar_count != 0) {
+        request.positive_exemplars.assign(options->positive_exemplars,
+                                          options->positive_exemplars + options->positive_exemplar_count);
+    }
+    if (options->negative_exemplar_count != 0) {
+        request.negative_exemplars.assign(options->negative_exemplars,
+                                          options->negative_exemplars + options->negative_exemplar_count);
+    }
+    for (const imagecpp_box &box : request.positive_exemplars) {
+        if (!valid_box(box)) {
+            throw std::invalid_argument("positive exemplar boxes must be finite and have positive area");
+        }
+    }
+    for (const imagecpp_box &box : request.negative_exemplars) {
+        if (!valid_box(box)) {
+            throw std::invalid_argument("negative exemplar boxes must be finite and have positive area");
+        }
+    }
+    request.score_threshold = options->score_threshold;
+    request.nms_threshold = options->nms_threshold;
+    return request;
+}
+
 GenerateRequest generate_request(const imagecpp_generate_options *options) {
     if (options == nullptr || options->struct_size < sizeof(imagecpp_generate_options)) {
         throw std::invalid_argument("generation options are null or too small");
@@ -192,6 +244,10 @@ GenerateRequest generate_request(const imagecpp_generate_options *options) {
 
 std::unique_ptr<Session> Model::create_session() {
     throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not provide reusable image sessions");
+}
+
+std::vector<DetectionOutput> Session::detect(const DetectRequest &) {
+    throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this session does not support text-prompted detection");
 }
 
 std::vector<ImageOutput> Model::generate(const GenerateRequest &) {
@@ -266,10 +322,12 @@ imagecpp_status imagecpp_model_load(const imagecpp_runtime *runtime, const char 
     }
     try {
         std::shared_ptr<imagecpp::detail::Model> implementation;
-        if (std::string_view(operation_id) == "image.segment.sam") {
+        if (std::string_view(operation_id) == "image.segment.sam" ||
+            std::string_view(operation_id) == "image.detect.sam3") {
 #if defined(IMAGECPP_WITH_SAM3)
             const imagecpp_model_options &settings = imagecpp::detail::validate_model_options(options);
-            implementation = imagecpp::detail::load_sam3_model(settings);
+            implementation =
+                imagecpp::detail::load_sam3_model(settings, std::string_view(operation_id) == "image.detect.sam3");
 #else
             (void)options;
             return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED,
@@ -475,6 +533,62 @@ imagecpp_status imagecpp_segment_result_info(const imagecpp_segment_result *resu
 }
 
 void imagecpp_segment_result_destroy(imagecpp_segment_result *result) { delete result; }
+
+void imagecpp_detect_options_init(imagecpp_detect_options *options) {
+    if (options != nullptr) {
+        *options = {sizeof(imagecpp_detect_options), nullptr, nullptr, 0, nullptr, 0, 0.5F, 0.1F};
+    }
+}
+
+imagecpp_status imagecpp_detect(imagecpp_session *session, const imagecpp_detect_options *options,
+                                imagecpp_detection_result **output, imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output detection pointer is null");
+    }
+    *output = nullptr;
+    if (session == nullptr || session->implementation == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "session is null");
+    }
+    try {
+        const imagecpp::detail::DetectRequest request = imagecpp::detail::detect_request(options);
+        auto result = std::make_unique<imagecpp_detection_result>();
+        result->outputs = session->implementation->detect(request);
+        *output = result.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected detection failure");
+    }
+}
+
+size_t imagecpp_detection_result_count(const imagecpp_detection_result *result) {
+    return result == nullptr ? 0 : result->outputs.size();
+}
+
+imagecpp_status imagecpp_detection_result_info(const imagecpp_detection_result *result, size_t index,
+                                               imagecpp_detection_info *output, imagecpp_error *error) {
+    if (result == nullptr || output == nullptr || output->struct_size < sizeof(imagecpp_detection_info)) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT,
+                                    "detection result or output info is null or too small");
+    }
+    if (index >= result->outputs.size()) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_OUT_OF_RANGE, "detection result index is out of range");
+    }
+    const imagecpp::detail::DetectionOutput &item = result->outputs[index];
+    *output = {
+        sizeof(imagecpp_detection_info),
+        item.label.c_str(),
+        item.box,
+        {sizeof(imagecpp_const_image_view), item.mask.data(), item.mask.size(), item.width, item.height, item.width,
+         IMAGECPP_PIXEL_FORMAT_GRAY_U8, IMAGECPP_COLOR_SPACE_UNKNOWN},
+        item.score,
+        item.iou_score,
+    };
+    return imagecpp::core::succeed(error);
+}
+
+void imagecpp_detection_result_destroy(imagecpp_detection_result *result) { delete result; }
 
 void imagecpp_generate_options_init(imagecpp_generate_options *options) {
     if (options != nullptr) {

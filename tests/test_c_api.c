@@ -30,6 +30,12 @@ int main(void) {
         cutout_options.upscale_factor != 1) {
         return 10;
     }
+    imagecpp_detect_options detect_options;
+    imagecpp_detect_options_init(&detect_options);
+    if (detect_options.struct_size != sizeof(detect_options) || detect_options.score_threshold != 0.5F ||
+        detect_options.nms_threshold != 0.1F) {
+        return 11;
+    }
     imagecpp_image_desc desc = {
         sizeof(imagecpp_image_desc), 1, 1, 0, IMAGECPP_PIXEL_FORMAT_RGB_U8, IMAGECPP_COLOR_SPACE_SRGB,
     };
