@@ -150,4 +150,3 @@ runtime introspection, errors, cancellation, tests, and packaging boundaries.
 - A node editor is not required for workflows. JSON and programmatic graphs
   come first; a UI can render the same typed operation schema later.
 - Network model download is tooling, not an implicit side effect of model load.
-

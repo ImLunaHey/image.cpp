@@ -34,9 +34,49 @@ The runtime is implemented in-process. Development-time conversion and parity
 tools may use reference implementations, but shipped inference will not invoke
 Python, shell commands, helper executables, or sidecars.
 
+## Current usage
+
+Inspect the operations compiled into the runtime:
+
+```sh
+./build/imagecpp inspect
+```
+
+The foundation CLI can resize binary PGM/PPM images while the codec layer is
+being established:
+
+```sh
+./build/imagecpp resize input.ppm output.ppm 1024x1024 bilinear
+```
+
+The CLI intentionally consumes only the installed C++ wrapper. Applications
+can use the same library directly:
+
+```cpp
+#include <imagecpp/imagecpp.hpp>
+
+imagecpp_image_desc description{
+    sizeof(imagecpp_image_desc),
+    512,
+    512,
+    0,
+    IMAGECPP_PIXEL_FORMAT_RGB_U8,
+    IMAGECPP_COLOR_SPACE_SRGB,
+};
+
+imagecpp::Image image(description);
+imagecpp::Runtime runtime;
+for (const imagecpp::OperationInfo & operation : runtime.operations()) {
+    // Discover built-in and model-backed operations here.
+}
+```
+
+All ABI structs passed as outputs must have `struct_size` initialized by the
+caller. Images allocated by the library must be released with
+`imagecpp_image_destroy`; the C++ wrapper handles that ownership with RAII.
+
 ## Project status
 
 The public API will evolve during the foundation phase. Model weights remain
 external assets and will use self-describing GGUF metadata or versioned package
 manifests for multi-component families.
-
