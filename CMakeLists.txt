@@ -258,6 +258,22 @@ if(IMAGECPP_WITH_STABLE_DIFFUSION)
     )
 endif()
 
+add_custom_target(imagecpp_models_starter)
+foreach(IMAGECPP_STARTER_MODEL_TARGET
+        imagecpp_model_edgetam
+        imagecpp_model_depth_anything
+        imagecpp_model_realesrgan)
+    if(TARGET ${IMAGECPP_STARTER_MODEL_TARGET})
+        add_dependencies(imagecpp_models_starter ${IMAGECPP_STARTER_MODEL_TARGET})
+    endif()
+endforeach()
+
+add_custom_target(imagecpp_models_full)
+add_dependencies(imagecpp_models_full imagecpp_models_starter)
+if(TARGET imagecpp_model_sd15_q4)
+    add_dependencies(imagecpp_models_full imagecpp_model_sd15_q4)
+endif()
+
 if(IMAGECPP_BUILD_CLI)
     add_executable(imagecpp_cli
         app/depth_command.cpp

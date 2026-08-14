@@ -14,6 +14,9 @@ Depth Anything 2/3 estimation with optional camera pose, and ESRGAN upscaling.
 See [the architecture](docs/architecture.md) for the
 project boundary and roadmap.
 
+Start with the [clean-checkout quickstart](docs/quickstart.md), including the
+small starter model bundle and optional local generation bundle.
+
 ## Intended capabilities
 
 - generation, editing, inpainting, outpainting, and conditioning;
