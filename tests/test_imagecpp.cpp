@@ -62,7 +62,7 @@ void test_version_and_runtime() {
     const auto operations = runtime.operations();
     size_t expected_count = 1;
 #if defined(IMAGECPP_TEST_WITH_SAM3)
-    expected_count += 1;
+    expected_count += 2;
 #endif
 #if defined(IMAGECPP_TEST_WITH_DEPTH_ANYTHING)
     expected_count += 1;
@@ -82,6 +82,9 @@ void test_version_and_runtime() {
 #if defined(IMAGECPP_TEST_WITH_SAM3)
     require(operations[index].id == "image.segment.sam", "runtime should expose image.segment.sam");
     require(operations[index].task == IMAGECPP_TASK_SEGMENT, "SAM operation task mismatch");
+    ++index;
+    require(operations[index].id == "image.workflow.cutout", "runtime should expose the cutout workflow");
+    require(operations[index].task == IMAGECPP_TASK_WORKFLOW, "cutout workflow task mismatch");
     ++index;
 #endif
 #if defined(IMAGECPP_TEST_WITH_DEPTH_ANYTHING)
@@ -122,6 +125,14 @@ void test_model_api_validation() {
     imagecpp_segment_options segment_options{};
     imagecpp_segment_options_init(&segment_options);
     require(segment_options.struct_size == sizeof(segment_options), "segment options initializer is invalid");
+
+    imagecpp_cutout_options cutout_options{};
+    imagecpp_cutout_options_init(&cutout_options);
+    require(cutout_options.struct_size == sizeof(cutout_options), "cutout options initializer is invalid");
+    require(cutout_options.segment.struct_size == sizeof(cutout_options.segment),
+            "nested segment options initializer is invalid");
+    require(cutout_options.crop_to_mask == 1 && cutout_options.upscale_factor == 1,
+            "cutout option defaults are invalid");
 
     imagecpp_diffusion_model_options diffusion_options{};
     imagecpp_diffusion_model_options_init(&diffusion_options);

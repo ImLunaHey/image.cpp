@@ -123,7 +123,8 @@ typedef enum imagecpp_task {
     IMAGECPP_TASK_GENERATE = 10,
     IMAGECPP_TASK_EDIT = 11,
     IMAGECPP_TASK_UPSCALE = 12,
-    IMAGECPP_TASK_RESTORE = 13
+    IMAGECPP_TASK_RESTORE = 13,
+    IMAGECPP_TASK_WORKFLOW = 14
 } imagecpp_task;
 
 typedef struct imagecpp_const_image_view {
@@ -262,6 +263,24 @@ typedef struct imagecpp_segment_info {
     float iou_score;
 } imagecpp_segment_info;
 
+typedef struct imagecpp_cutout_options {
+    size_t struct_size;
+    imagecpp_segment_options segment;
+    int crop_to_mask;
+    uint32_t padding;
+    uint32_t upscale_factor;
+} imagecpp_cutout_options;
+
+typedef struct imagecpp_cutout_info {
+    size_t struct_size;
+    imagecpp_const_image_view image;
+    imagecpp_const_image_view mask;
+    imagecpp_box source_box;
+    size_t selected_mask_index;
+    float score;
+    float iou_score;
+} imagecpp_cutout_info;
+
 typedef struct imagecpp_classification_info {
     size_t struct_size;
     size_t label_index;
@@ -289,6 +308,7 @@ typedef struct imagecpp_image_result imagecpp_image_result;
 typedef struct imagecpp_depth_result imagecpp_depth_result;
 typedef struct imagecpp_embedding_result imagecpp_embedding_result;
 typedef struct imagecpp_classification_result imagecpp_classification_result;
+typedef struct imagecpp_cutout_result imagecpp_cutout_result;
 
 IMAGECPP_API uint32_t imagecpp_version(void);
 IMAGECPP_API const char *imagecpp_version_string(void);
@@ -354,6 +374,15 @@ IMAGECPP_API size_t imagecpp_segment_result_count(const imagecpp_segment_result 
 IMAGECPP_API imagecpp_status imagecpp_segment_result_info(const imagecpp_segment_result *result, size_t index,
                                                           imagecpp_segment_info *output, imagecpp_error *error);
 IMAGECPP_API void imagecpp_segment_result_destroy(imagecpp_segment_result *result);
+
+IMAGECPP_API void imagecpp_cutout_options_init(imagecpp_cutout_options *options);
+IMAGECPP_API imagecpp_status imagecpp_cutout(imagecpp_session *segment_session, const imagecpp_model *upscaler_model,
+                                             const imagecpp_const_image_view *image,
+                                             const imagecpp_cutout_options *options, imagecpp_cutout_result **output,
+                                             imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_cutout_result_info(const imagecpp_cutout_result *result,
+                                                         imagecpp_cutout_info *output, imagecpp_error *error);
+IMAGECPP_API void imagecpp_cutout_result_destroy(imagecpp_cutout_result *result);
 
 IMAGECPP_API void imagecpp_generate_options_init(imagecpp_generate_options *options);
 IMAGECPP_API imagecpp_status imagecpp_generate(const imagecpp_model *model, const imagecpp_generate_options *options,

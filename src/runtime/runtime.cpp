@@ -49,6 +49,14 @@ imagecpp_status imagecpp_runtime_create(imagecpp_runtime **output, imagecpp_erro
             IMAGECPP_ARTIFACT_IMAGE,
             IMAGECPP_ARTIFACT_MASK,
         });
+        runtime->operations.push_back({
+            "image.workflow.cutout",
+            "Create a prompted cutout",
+            "Segment, select, crop, alpha-mask, and optionally upscale a foreground object",
+            IMAGECPP_TASK_WORKFLOW,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_IMAGE,
+        });
 #endif
 #if defined(IMAGECPP_WITH_DEPTH_ANYTHING)
         runtime->operations.push_back({

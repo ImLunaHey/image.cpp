@@ -10,6 +10,8 @@ int main(void) {
         return 1;
     }
     const size_t operation_count = imagecpp_runtime_operation_count(runtime);
+    imagecpp_cutout_options cutout_options;
+    imagecpp_cutout_options_init(&cutout_options);
     imagecpp_runtime_destroy(runtime);
-    return operation_count == 0 ? 2 : 0;
+    return operation_count == 0 || cutout_options.struct_size != sizeof(cutout_options) ? 2 : 0;
 }

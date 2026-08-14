@@ -558,9 +558,71 @@ class Session final {
         return SegmentResult(result);
     }
 
+    imagecpp_session *get() noexcept { return handle_; }
+    const imagecpp_session *get() const noexcept { return handle_; }
+
   private:
     imagecpp_session *handle_ = nullptr;
 };
+
+struct CutoutInfo {
+    imagecpp_const_image_view image{};
+    imagecpp_const_image_view mask{};
+    imagecpp_box source_box{};
+    size_t selected_mask_index = 0;
+    float score = 0.0F;
+    float iou_score = 0.0F;
+};
+
+class CutoutResult final {
+  public:
+    ~CutoutResult() { imagecpp_cutout_result_destroy(handle_); }
+
+    CutoutResult(const CutoutResult &) = delete;
+    CutoutResult &operator=(const CutoutResult &) = delete;
+
+    CutoutResult(CutoutResult &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    CutoutResult &operator=(CutoutResult &&other) noexcept {
+        if (this != &other) {
+            imagecpp_cutout_result_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    CutoutInfo info() const {
+        imagecpp_cutout_info result{};
+        result.struct_size = sizeof(result);
+        imagecpp_error error{};
+        check(imagecpp_cutout_result_info(handle_, &result, &error), error);
+        return {result.image, result.mask,     result.source_box, result.selected_mask_index,
+                result.score, result.iou_score};
+    }
+
+  private:
+    explicit CutoutResult(imagecpp_cutout_result *handle) noexcept : handle_(handle) {}
+
+    friend CutoutResult cutout(Session &, const Model *, const imagecpp_const_image_view &,
+                               const imagecpp_cutout_options &);
+
+    imagecpp_cutout_result *handle_ = nullptr;
+};
+
+inline CutoutResult cutout(Session &segment_session, const Model *upscaler_model,
+                           const imagecpp_const_image_view &image, const imagecpp_cutout_options &options) {
+    imagecpp_cutout_result *result = nullptr;
+    imagecpp_error error{};
+    check(imagecpp_cutout(segment_session.get(), upscaler_model == nullptr ? nullptr : upscaler_model->get(), &image,
+                          &options, &result, &error),
+          error);
+    return CutoutResult(result);
+}
+
+inline CutoutResult cutout(Session &segment_session, const Model *upscaler_model, const Image &image,
+                           const imagecpp_cutout_options &options) {
+    return cutout(segment_session, upscaler_model, image.view(), options);
+}
 
 inline void resize(const imagecpp_const_image_view &source, const imagecpp_image_view &destination,
                    imagecpp_resize_filter filter) {

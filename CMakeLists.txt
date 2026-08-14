@@ -61,6 +61,7 @@ add_library(imagecpp ${IMAGECPP_LIBRARY_TYPE}
     src/model/model.cpp
     src/runtime/runtime.cpp
     src/version.cpp
+    src/workflow/cutout.cpp
 )
 add_library(imagecpp::imagecpp ALIAS imagecpp)
 
@@ -380,6 +381,32 @@ if(IMAGECPP_BUILD_TESTS)
                     --factor 4
             )
             set_tests_properties(imagecpp.cli.upscale-model PROPERTIES TIMEOUT 60)
+        endif()
+        if(IMAGECPP_WITH_SAM3 AND IMAGECPP_WITH_STABLE_DIFFUSION AND IMAGECPP_TEST_SAM_MODEL AND
+           IMAGECPP_TEST_UPSCALER_MODEL)
+            add_executable(imagecpp_workflow_c_api_test tests/test_workflow_c_api.c)
+            target_link_libraries(imagecpp_workflow_c_api_test PRIVATE imagecpp::imagecpp)
+            target_compile_definitions(imagecpp_workflow_c_api_test PRIVATE
+                "IMAGECPP_TEST_SAM_MODEL_PATH=\"${IMAGECPP_TEST_SAM_MODEL}\""
+                "IMAGECPP_TEST_UPSCALER_MODEL_PATH=\"${IMAGECPP_TEST_UPSCALER_MODEL}\""
+                "IMAGECPP_TEST_IMAGE_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/tests/data/2x2.ppm\""
+            )
+            imagecpp_enable_warnings(imagecpp_workflow_c_api_test)
+            set_target_properties(imagecpp_workflow_c_api_test PROPERTIES LINKER_LANGUAGE CXX)
+            add_test(NAME imagecpp.c-api.cutout-workflow COMMAND imagecpp_workflow_c_api_test)
+            set_tests_properties(imagecpp.c-api.cutout-workflow PROPERTIES TIMEOUT 120)
+            add_test(
+                NAME imagecpp.cli.cutout-workflow
+                COMMAND imagecpp_cli cutout
+                    "${IMAGECPP_TEST_SAM_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/2x2.ppm"
+                    "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-cli-cutout.png"
+                    --point 1,1
+                    --keep-canvas
+                    --upscaler "${IMAGECPP_TEST_UPSCALER_MODEL}"
+                    --factor 4
+            )
+            set_tests_properties(imagecpp.cli.cutout-workflow PROPERTIES TIMEOUT 120)
         endif()
         if(IMAGECPP_WITH_DEPTH_ANYTHING AND IMAGECPP_TEST_DEPTH_MODEL)
             add_test(

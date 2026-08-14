@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -23,6 +24,7 @@ void print_usage(std::ostream &output) {
            << "  imagecpp resize <input-image> <output-image> <width>x<height> [nearest|bilinear]\n"
            << "  imagecpp segment <model> <input-image> <output-mask> [prompt options]\n"
            << "  imagecpp remove-background <model> <input-image> <output-image> [prompt options]\n"
+           << "  imagecpp cutout <model> <input-image> <output-image> [workflow and prompt options]\n"
            << "  imagecpp generate <model> <output-image> <prompt> [generation options]\n"
            << "  imagecpp edit <model> <input-image> <output-image> <prompt> [generation options]\n"
            << "  imagecpp upscale <model> <input-image> <output-image> [upscale options]\n"
@@ -35,6 +37,10 @@ void print_usage(std::ostream &output) {
            << "  --negative <x>,<y>     negative point (repeatable)\n"
            << "  --box <x0>,<y0>,<x1>,<y1>\n"
            << "  --multimask            ask the model for multiple candidates\n"
+           << "  --upscaler <model>      upscale the cutout with an ESRGAN model\n"
+           << "  --factor <count>        cutout upscale factor (default: 4)\n"
+           << "  --padding <pixels>      retain pixels around the mask when cropping\n"
+           << "  --keep-canvas           retain the source canvas instead of cropping\n"
            << "  --cpu | --gpu          select a compute device (default: auto)\n"
            << "  --threads <count>      CPU worker threads\n"
            << "\nformats: PNG, JPEG, WebP, BMP, and TGA (selected by output extension)\n";
@@ -50,6 +56,20 @@ uint32_t parse_size_part(const std::string &value, const char *name) {
         throw std::runtime_error(std::string("invalid ") + name);
     }
     if (consumed != value.size() || parsed == 0 || parsed > std::numeric_limits<uint32_t>::max()) {
+        throw std::runtime_error(std::string("invalid ") + name);
+    }
+    return static_cast<uint32_t>(parsed);
+}
+
+uint32_t parse_nonnegative_part(const std::string &value, const char *name) {
+    size_t consumed = 0;
+    unsigned long parsed = 0;
+    try {
+        parsed = std::stoul(value, &consumed);
+    } catch (const std::exception &) {
+        throw std::runtime_error(std::string("invalid ") + name);
+    }
+    if (consumed != value.size() || parsed > std::numeric_limits<uint32_t>::max()) {
         throw std::runtime_error(std::string("invalid ") + name);
     }
     return static_cast<uint32_t>(parsed);
@@ -114,9 +134,14 @@ struct PromptArguments {
     bool multimask = false;
     imagecpp_device device = IMAGECPP_DEVICE_AUTO;
     int32_t threads = 0;
+    std::string upscaler_path;
+    uint32_t upscale_factor = 4;
+    uint32_t padding = 0;
+    bool crop_to_mask = true;
+    bool upscale_factor_set = false;
 };
 
-PromptArguments parse_prompt_arguments(int argc, char **argv) {
+PromptArguments parse_prompt_arguments(int argc, char **argv, bool workflow_options = false) {
     if (argc < 5) {
         throw std::runtime_error("segment commands require a model, input image, output image, and prompt");
     }
@@ -141,6 +166,24 @@ PromptArguments parse_prompt_arguments(int argc, char **argv) {
             result.use_box = true;
         } else if (option == "--multimask") {
             result.multimask = true;
+        } else if (workflow_options && option == "--upscaler") {
+            if (++index >= argc) {
+                throw std::runtime_error("--upscaler requires a model path");
+            }
+            result.upscaler_path = argv[index];
+        } else if (workflow_options && option == "--factor") {
+            if (++index >= argc) {
+                throw std::runtime_error("--factor requires a count");
+            }
+            result.upscale_factor = parse_size_part(argv[index], "upscale factor");
+            result.upscale_factor_set = true;
+        } else if (workflow_options && option == "--padding") {
+            if (++index >= argc) {
+                throw std::runtime_error("--padding requires a pixel count");
+            }
+            result.padding = parse_nonnegative_part(argv[index], "padding");
+        } else if (workflow_options && option == "--keep-canvas") {
+            result.crop_to_mask = false;
         } else if (option == "--cpu") {
             result.device = IMAGECPP_DEVICE_CPU;
         } else if (option == "--gpu") {
@@ -160,6 +203,12 @@ PromptArguments parse_prompt_arguments(int argc, char **argv) {
     }
     if (result.points.empty() && !result.use_box) {
         throw std::runtime_error("provide at least one --point, --negative, or --box prompt");
+    }
+    if (workflow_options && result.upscaler_path.empty() && result.upscale_factor_set) {
+        throw std::runtime_error("--factor requires --upscaler");
+    }
+    if (workflow_options && !result.upscaler_path.empty() && result.upscale_factor < 2) {
+        throw std::runtime_error("cutout upscale factor must be at least two");
     }
     return result;
 }
@@ -215,53 +264,51 @@ int segment_image(int argc, char **argv) {
     return 0;
 }
 
-int remove_background(int argc, char **argv) {
-    const PromptArguments arguments = parse_prompt_arguments(argc, argv);
-    SegmentationRun run = run_segmentation(arguments);
-    const imagecpp_const_image_view source = static_cast<const imagecpp::Image &>(run.source).view();
-    const imagecpp::SegmentInfo selection = run.result.at(best_mask(run.result));
-    if (selection.mask.width != source.width || selection.mask.height != source.height) {
-        throw std::runtime_error("segmentation mask dimensions do not match the source image");
+int run_cutout(const PromptArguments &arguments, bool keep_canvas) {
+    imagecpp::Runtime runtime;
+    imagecpp_model_options segment_model_options{};
+    imagecpp_model_options_init(&segment_model_options);
+    segment_model_options.model_path = arguments.model_path.c_str();
+    segment_model_options.threads = arguments.threads;
+    segment_model_options.device = arguments.device;
+    imagecpp::Model segment_model(runtime, "image.segment.sam", segment_model_options);
+    imagecpp::Session segment_session(segment_model);
+    imagecpp::Image source = imagecpp::load(arguments.input_path);
+
+    std::optional<imagecpp::Model> upscaler;
+    if (!arguments.upscaler_path.empty()) {
+        imagecpp_upscaler_model_options upscaler_options{};
+        imagecpp_upscaler_model_options_init(&upscaler_options);
+        upscaler_options.model_path = arguments.upscaler_path.c_str();
+        upscaler_options.threads = arguments.threads;
+        upscaler_options.device = arguments.device;
+        upscaler.emplace(runtime, upscaler_options);
     }
 
-    imagecpp_image_desc output_desc{
-        sizeof(imagecpp_image_desc), source.width, source.height, 0, IMAGECPP_PIXEL_FORMAT_RGBA_U8,
-        IMAGECPP_COLOR_SPACE_SRGB,
-    };
-    imagecpp::Image output(output_desc);
-    imagecpp_image_view output_view = output.view();
-    const auto *source_bytes = static_cast<const uint8_t *>(source.data);
-    const auto *mask_bytes = static_cast<const uint8_t *>(selection.mask.data);
-    auto *output_bytes = static_cast<uint8_t *>(output_view.data);
-    for (uint32_t row = 0; row < source.height; ++row) {
-        const uint8_t *source_row = source_bytes + static_cast<size_t>(row) * source.row_stride;
-        const uint8_t *mask_row = mask_bytes + static_cast<size_t>(row) * selection.mask.row_stride;
-        uint8_t *output_row = output_bytes + static_cast<size_t>(row) * output_view.row_stride;
-        for (uint32_t column = 0; column < source.width; ++column) {
-            const size_t output_offset = static_cast<size_t>(column) * 4;
-            uint8_t original_alpha = 255;
-            switch (source.pixel_format) {
-            case IMAGECPP_PIXEL_FORMAT_GRAY_U8:
-                output_row[output_offset] = source_row[column];
-                output_row[output_offset + 1] = source_row[column];
-                output_row[output_offset + 2] = source_row[column];
-                break;
-            case IMAGECPP_PIXEL_FORMAT_RGB_U8:
-                std::memcpy(output_row + output_offset, source_row + static_cast<size_t>(column) * 3, 3);
-                break;
-            case IMAGECPP_PIXEL_FORMAT_RGBA_U8:
-                std::memcpy(output_row + output_offset, source_row + static_cast<size_t>(column) * 4, 3);
-                original_alpha = source_row[static_cast<size_t>(column) * 4 + 3];
-                break;
-            default:
-                throw std::runtime_error("remove-background supports gray, RGB, or RGBA source images");
-            }
-            output_row[output_offset + 3] =
-                static_cast<uint8_t>((static_cast<unsigned>(original_alpha) * mask_row[column] + 127U) / 255U);
-        }
-    }
-    imagecpp::save(arguments.output_path, output);
+    imagecpp_cutout_options options{};
+    imagecpp_cutout_options_init(&options);
+    options.segment.points = arguments.points.data();
+    options.segment.point_count = arguments.points.size();
+    options.segment.box = arguments.box;
+    options.segment.use_box = arguments.use_box ? 1 : 0;
+    options.segment.multimask = arguments.multimask ? 1 : 0;
+    options.crop_to_mask = keep_canvas ? 0 : 1;
+    options.padding = arguments.padding;
+    options.upscale_factor = upscaler.has_value() ? arguments.upscale_factor : 1;
+
+    imagecpp::CutoutResult result = imagecpp::cutout(segment_session, upscaler ? &*upscaler : nullptr, source, options);
+    const imagecpp::CutoutInfo info = result.info();
+    imagecpp::save(arguments.output_path, info.image);
+    std::cout << "selected mask: " << info.selected_mask_index << ", IoU score: " << info.iou_score
+              << ", output: " << info.image.width << 'x' << info.image.height << '\n';
     return 0;
+}
+
+int remove_background(int argc, char **argv) { return run_cutout(parse_prompt_arguments(argc, argv), true); }
+
+int cutout_image(int argc, char **argv) {
+    const PromptArguments arguments = parse_prompt_arguments(argc, argv, true);
+    return run_cutout(arguments, !arguments.crop_to_mask);
 }
 
 int inspect() {
@@ -406,6 +453,9 @@ int main(int argc, char **argv) {
         }
         if (argc >= 2 && std::string(argv[1]) == "remove-background") {
             return remove_background(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "cutout") {
+            return cutout_image(argc, argv);
         }
         if (argc >= 2 && std::string(argv[1]) == "generate") {
             return generate_image_command(argc, argv);

@@ -23,6 +23,13 @@ int main(void) {
     if (depth_options.struct_size != sizeof(depth_options) || depth_options.include_pose != 0) {
         return 9;
     }
+    imagecpp_cutout_options cutout_options;
+    imagecpp_cutout_options_init(&cutout_options);
+    if (cutout_options.struct_size != sizeof(cutout_options) ||
+        cutout_options.segment.struct_size != sizeof(cutout_options.segment) || cutout_options.crop_to_mask != 1 ||
+        cutout_options.upscale_factor != 1) {
+        return 10;
+    }
     imagecpp_image_desc desc = {
         sizeof(imagecpp_image_desc), 1, 1, 0, IMAGECPP_PIXEL_FORMAT_RGB_U8, IMAGECPP_COLOR_SPACE_SRGB,
     };
