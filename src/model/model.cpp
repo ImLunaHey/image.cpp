@@ -27,6 +27,10 @@ struct imagecpp_image_result {
     std::vector<imagecpp::detail::ImageOutput> outputs;
 };
 
+struct imagecpp_depth_result {
+    imagecpp::detail::DepthOutput output;
+};
+
 namespace imagecpp::detail {
 namespace {
 
@@ -43,7 +47,7 @@ imagecpp_status translate_exception(imagecpp_error *error, const std::exception 
     return core::fail(error, IMAGECPP_STATUS_INTERNAL, exception.what());
 }
 
-#if defined(IMAGECPP_WITH_SAM3)
+#if defined(IMAGECPP_WITH_SAM3) || defined(IMAGECPP_WITH_DEPTH_ANYTHING)
 const imagecpp_model_options &validate_model_options(const imagecpp_model_options *options) {
     if (options == nullptr || options->struct_size < sizeof(imagecpp_model_options)) {
         throw std::invalid_argument("model options are null or too small");
@@ -189,6 +193,10 @@ std::vector<ImageOutput> Model::generate(const GenerateRequest &) {
 ImageOutput Model::upscale(const imagecpp_const_image_view &, uint32_t) {
     throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support image upscaling");
 }
+
+DepthOutput Model::depth(const imagecpp_const_image_view &, bool) {
+    throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support depth estimation");
+}
 } // namespace imagecpp::detail
 
 extern "C" {
@@ -246,6 +254,15 @@ imagecpp_status imagecpp_model_load(const imagecpp_runtime *runtime, const char 
             (void)options;
             return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED,
                                         "SAM segmentation support is not compiled in");
+#endif
+        } else if (std::string_view(operation_id) == "image.depth.depth-anything") {
+#if defined(IMAGECPP_WITH_DEPTH_ANYTHING)
+            const imagecpp_model_options &settings = imagecpp::detail::validate_model_options(options);
+            implementation = imagecpp::detail::load_depth_anything_model(settings);
+#else
+            (void)options;
+            return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED,
+                                        "Depth Anything support is not compiled in");
 #endif
         } else {
             return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED, "operation has no model loader");
@@ -554,5 +571,83 @@ imagecpp_status imagecpp_image_result_view(const imagecpp_image_result *result, 
 }
 
 void imagecpp_image_result_destroy(imagecpp_image_result *result) { delete result; }
+
+void imagecpp_depth_options_init(imagecpp_depth_options *options) {
+    if (options != nullptr) {
+        *options = {sizeof(imagecpp_depth_options), 0};
+    }
+}
+
+imagecpp_status imagecpp_depth(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                               const imagecpp_depth_options *options, imagecpp_depth_result **output,
+                               imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output depth result pointer is null");
+    }
+    *output = nullptr;
+    if (model == nullptr || model->implementation == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "model is null");
+    }
+    if (options == nullptr || options->struct_size < sizeof(imagecpp_depth_options)) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "depth options are null or too small");
+    }
+    imagecpp::detail::ImageLayout layout;
+    const imagecpp_status status = imagecpp::detail::validate_const_view(image, layout, error);
+    if (status != IMAGECPP_STATUS_OK) {
+        return status;
+    }
+    try {
+        auto result = std::make_unique<imagecpp_depth_result>();
+        result->output = model->implementation->depth(*image, options->include_pose != 0);
+        if (result->output.width == 0 || result->output.height == 0 || result->output.depth.empty()) {
+            throw imagecpp::detail::Failure(IMAGECPP_STATUS_MODEL_ERROR, "depth estimation returned no data");
+        }
+        *output = result.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected depth estimation failure");
+    }
+}
+
+imagecpp_status imagecpp_depth_result_info(const imagecpp_depth_result *result, imagecpp_depth_info *output,
+                                           imagecpp_error *error) {
+    if (result == nullptr || output == nullptr || output->struct_size < sizeof(imagecpp_depth_info)) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT,
+                                    "depth result or output info is null or too small");
+    }
+    const imagecpp::detail::DepthOutput &item = result->output;
+    const auto view = [&](const std::vector<float> &values) {
+        if (values.empty()) {
+            return imagecpp_const_image_view{
+                sizeof(imagecpp_const_image_view), nullptr, 0, 0, 0, 0, IMAGECPP_PIXEL_FORMAT_UNKNOWN,
+                IMAGECPP_COLOR_SPACE_UNKNOWN};
+        }
+        return imagecpp_const_image_view{
+            sizeof(imagecpp_const_image_view),
+            values.data(),
+            values.size() * sizeof(float),
+            item.width,
+            item.height,
+            static_cast<size_t>(item.width) * sizeof(float),
+            IMAGECPP_PIXEL_FORMAT_GRAY_F32,
+            IMAGECPP_COLOR_SPACE_UNKNOWN,
+        };
+    };
+    *output = {sizeof(imagecpp_depth_info),
+               view(item.depth),
+               view(item.confidence),
+               view(item.sky),
+               item.is_metric ? 1 : 0,
+               item.has_pose ? 1 : 0,
+               {},
+               {}};
+    std::memcpy(output->extrinsics, item.extrinsics, sizeof(item.extrinsics));
+    std::memcpy(output->intrinsics, item.intrinsics, sizeof(item.intrinsics));
+    return imagecpp::core::succeed(error);
+}
+
+void imagecpp_depth_result_destroy(imagecpp_depth_result *result) { delete result; }
 
 } // extern "C"

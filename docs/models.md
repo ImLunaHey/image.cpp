@@ -42,6 +42,38 @@ and encoded image are reusable through the C and C++ session APIs, so an
 interactive application does not pay load and image-encoding costs for every
 prompt.
 
+## Depth Anything 3 Base Q4_K
+
+The starter understanding model is the 104 MB
+`depth-anything-base-q4_k.gguf`. It produces dense relative depth and
+confidence maps and can also recover camera extrinsics and intrinsics. Download
+and verify it with:
+
+```sh
+cmake --build build --target imagecpp_model_depth_anything
+```
+
+Its SHA-256 is
+`43cd45d00f9024f4319f4beabd73155db5132e4b575bc52eff4131262c9d78f1`.
+The file comes from the `mudler/depth-anything.cpp-gguf` repository and was
+converted from the Apache-2.0 Depth Anything 3 Base checkpoint. The native
+provider is MIT licensed.
+
+Write an 8-bit visualization, with nearer regions brighter by default:
+
+```sh
+./build/imagecpp depth \
+  models/depth-anything-base-q4_k.gguf input.jpg depth.png --pose
+```
+
+Use `--no-invert` to make farther regions brighter. The C and C++ APIs retain
+the raw `GRAY_F32` depth and confidence maps, the metric/relative flag, and the
+optional 3x4 extrinsic and 3x3 intrinsic matrices. Model preprocessing may
+change the output dimensions; the returned views report the exact processed
+size. Depth Anything currently selects the best compiled device automatically.
+The same provider accepts compatible self-describing Depth Anything 2 and 3
+GGUFs, including metric models.
+
 ## Stable Diffusion 1.5 Q4_0
 
 The validated starter generation model is `v1-5-pruned_Q4_0.gguf` (3.05 GB).
@@ -121,6 +153,7 @@ I/O:
 | Operation | Input | Time | Peak footprint |
 | --- | --- | ---: | ---: |
 | EdgeTAM background removal | 1800x1200 JPEG | 1.06 s warm | 495 MB |
+| Depth Anything 3 Base Q4_K | 512x512 PNG + pose | 8.18 s cold | 644 MB |
 | SD 1.5 Q4 text-to-image | 512x512, 8 steps | 15.75 s | 3.39 GB |
 | SD 1.5 Q4 img2img | 512x512, 4 effective steps | 12.68 s | 3.64 GB |
 | RealESRGAN x4 | 2x2 fixture to 8x8 | 1.05 s | 78 MB |

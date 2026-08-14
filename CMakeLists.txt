@@ -16,9 +16,11 @@ option(IMAGECPP_BUILD_SHARED "Build libimagecpp as a shared library" OFF)
 option(IMAGECPP_WITH_WEBP "Build WebP decoding and encoding support" ON)
 option(IMAGECPP_WITH_SAM3 "Build SAM 2/SAM 3/EdgeTAM segmentation support" ON)
 option(IMAGECPP_WITH_STABLE_DIFFUSION "Build generation, editing, and ESRGAN support" ON)
+option(IMAGECPP_WITH_DEPTH_ANYTHING "Build Depth Anything 2/3 support" ON)
 set(IMAGECPP_TEST_SAM_MODEL "" CACHE FILEPATH "Optional SAM/EdgeTAM model used by integration tests")
 set(IMAGECPP_TEST_DIFFUSION_MODEL "" CACHE FILEPATH "Optional diffusion model used by integration tests")
 set(IMAGECPP_TEST_UPSCALER_MODEL "" CACHE FILEPATH "Optional ESRGAN model used by integration tests")
+set(IMAGECPP_TEST_DEPTH_MODEL "" CACHE FILEPATH "Optional Depth Anything model used by integration tests")
 
 function(imagecpp_enable_warnings target)
     if(MSVC)
@@ -108,7 +110,7 @@ if(IMAGECPP_WITH_WEBP)
     target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_WEBP=1)
 endif()
 
-if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION)
+if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING)
     set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
@@ -131,6 +133,56 @@ if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION)
             set_target_properties(${ggml_target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
         endif()
     endforeach()
+endif()
+
+if(IMAGECPP_WITH_DEPTH_ANYTHING)
+    add_library(imagecpp_depth_engine STATIC
+        external/depth-anything/src/attention.cpp
+        external/depth-anything/src/backend.cpp
+        external/depth-anything/src/cam_pose.cpp
+        external/depth-anything/src/dino_backbone.cpp
+        external/depth-anything/src/dpt_blocks.cpp
+        external/depth-anything/src/dpt_head.cpp
+        external/depth-anything/src/engine.cpp
+        external/depth-anything/src/gs_adapter.cpp
+        external/depth-anything/src/gs_head.cpp
+        external/depth-anything/src/image_io.cpp
+        external/depth-anything/src/linalg.cpp
+        external/depth-anything/src/model_loader.cpp
+        external/depth-anything/src/nested.cpp
+        external/depth-anything/src/preprocess.cpp
+        external/depth-anything/src/ray_pose.cpp
+        external/depth-anything/src/rope2d.cpp
+        external/depth-anything/src/uv_posembed.cpp
+        external/depth-anything/src/vit_block.cpp
+        external/depth-anything/src/winograd.cpp
+    )
+    target_compile_features(imagecpp_depth_engine PRIVATE cxx_std_17)
+    target_include_directories(imagecpp_depth_engine PRIVATE
+        external/depth-anything/include
+        external/depth-anything/src
+        external/depth-anything/third_party/stb
+    )
+    target_compile_definitions(imagecpp_depth_engine PRIVATE STB_IMAGE_STATIC)
+    target_link_libraries(imagecpp_depth_engine PRIVATE ggml::ggml)
+    set_target_properties(imagecpp_depth_engine PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+        POSITION_INDEPENDENT_CODE YES
+    )
+
+    target_sources(imagecpp PRIVATE src/provider/depth_anything_provider.cpp)
+    target_include_directories(imagecpp PRIVATE external/depth-anything/src)
+    target_link_libraries(imagecpp PRIVATE imagecpp_depth_engine ggml::ggml)
+    target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_DEPTH_ANYTHING=1)
+
+    imagecpp_add_model_download(
+        imagecpp_model_depth_anything
+        depth-anything-base-q4_k.gguf
+        "https://huggingface.co/mudler/depth-anything.cpp-gguf/resolve/main/depth-anything-base-q4_k.gguf"
+        43cd45d00f9024f4319f4beabd73155db5132e4b575bc52eff4131262c9d78f1
+        "Depth Anything 3 Base Q4_K"
+    )
 endif()
 
 if(IMAGECPP_WITH_SAM3)
@@ -208,6 +260,7 @@ endif()
 
 if(IMAGECPP_BUILD_CLI)
     add_executable(imagecpp_cli
+        app/depth_command.cpp
         app/main.cpp
         app/model_commands.cpp
     )
@@ -226,6 +279,7 @@ if(IMAGECPP_BUILD_TESTS)
         $<$<BOOL:${IMAGECPP_WITH_WEBP}>:IMAGECPP_TEST_WITH_WEBP=1>
         $<$<BOOL:${IMAGECPP_WITH_SAM3}>:IMAGECPP_TEST_WITH_SAM3=1>
         $<$<BOOL:${IMAGECPP_WITH_STABLE_DIFFUSION}>:IMAGECPP_TEST_WITH_STABLE_DIFFUSION=1>
+        $<$<BOOL:${IMAGECPP_WITH_DEPTH_ANYTHING}>:IMAGECPP_TEST_WITH_DEPTH_ANYTHING=1>
     )
     imagecpp_enable_warnings(imagecpp_tests)
     add_test(NAME imagecpp.unit COMMAND imagecpp_tests)
@@ -278,6 +332,16 @@ if(IMAGECPP_BUILD_TESTS)
             )
             set_tests_properties(imagecpp.cli.upscale-model PROPERTIES TIMEOUT 60)
         endif()
+        if(IMAGECPP_WITH_DEPTH_ANYTHING AND IMAGECPP_TEST_DEPTH_MODEL)
+            add_test(
+                NAME imagecpp.cli.depth-model
+                COMMAND imagecpp_cli depth
+                    "${IMAGECPP_TEST_DEPTH_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/2x2.ppm"
+                    "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-cli-depth.png"
+            )
+            set_tests_properties(imagecpp.cli.depth-model PROPERTIES TIMEOUT 60)
+        endif()
     endif()
 endif()
 
@@ -288,7 +352,7 @@ install(TARGETS imagecpp
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
-if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION)
+if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING)
     set(IMAGECPP_GGML_TARGETS ggml ggml-base)
     foreach(backend IN LISTS GGML_AVAILABLE_BACKENDS)
         if(TARGET ${backend})
@@ -318,6 +382,14 @@ if(IMAGECPP_WITH_STABLE_DIFFUSION)
     set_target_properties(stable-diffusion PROPERTIES PUBLIC_HEADER "${IMAGECPP_SD_PUBLIC_HEADERS}")
     unset(IMAGECPP_SD_PUBLIC_HEADERS)
 endif()
+if(IMAGECPP_WITH_DEPTH_ANYTHING)
+    install(TARGETS imagecpp_depth_engine
+        EXPORT imagecppTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
 if(IMAGECPP_BUILD_CLI)
     install(TARGETS imagecpp_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
@@ -328,11 +400,14 @@ install(FILES external/libwebp/COPYING DESTINATION ${CMAKE_INSTALL_DATADIR}/imag
 if(IMAGECPP_WITH_SAM3)
     install(FILES external/sam3/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME sam3.cpp.txt)
 endif()
-if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION)
+if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING)
     install(FILES external/ggml/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME ggml.txt)
 endif()
 if(IMAGECPP_WITH_STABLE_DIFFUSION)
     install(FILES external/stable-diffusion/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME stable-diffusion.cpp.txt)
+endif()
+if(IMAGECPP_WITH_DEPTH_ANYTHING)
+    install(FILES external/depth-anything/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME depth-anything.cpp.txt)
 endif()
 
 write_basic_package_version_file(

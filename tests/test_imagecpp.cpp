@@ -64,6 +64,9 @@ void test_version_and_runtime() {
 #if defined(IMAGECPP_TEST_WITH_SAM3)
     expected_count += 1;
 #endif
+#if defined(IMAGECPP_TEST_WITH_DEPTH_ANYTHING)
+    expected_count += 1;
+#endif
 #if defined(IMAGECPP_TEST_WITH_STABLE_DIFFUSION)
     expected_count += 3;
 #endif
@@ -76,6 +79,11 @@ void test_version_and_runtime() {
 #if defined(IMAGECPP_TEST_WITH_SAM3)
     require(operations[index].id == "image.segment.sam", "runtime should expose image.segment.sam");
     require(operations[index].task == IMAGECPP_TASK_SEGMENT, "SAM operation task mismatch");
+    ++index;
+#endif
+#if defined(IMAGECPP_TEST_WITH_DEPTH_ANYTHING)
+    require(operations[index].id == "image.depth.depth-anything", "runtime should expose Depth Anything");
+    require(operations[index].task == IMAGECPP_TASK_DEPTH, "Depth Anything operation task mismatch");
     ++index;
 #endif
 #if defined(IMAGECPP_TEST_WITH_STABLE_DIFFUSION)
@@ -119,6 +127,10 @@ void test_model_api_validation() {
     require(generate_options.struct_size == sizeof(generate_options), "generation options initializer is invalid");
     require(generate_options.width == 512 && generate_options.height == 512,
             "generation dimensions defaults are invalid");
+
+    imagecpp_depth_options depth_options{};
+    imagecpp_depth_options_init(&depth_options);
+    require(depth_options.struct_size == sizeof(depth_options), "depth options initializer is invalid");
 }
 
 void test_layout_validation() {

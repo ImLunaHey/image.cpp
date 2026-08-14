@@ -50,6 +50,16 @@ imagecpp_status imagecpp_runtime_create(imagecpp_runtime **output, imagecpp_erro
             IMAGECPP_ARTIFACT_MASK,
         });
 #endif
+#if defined(IMAGECPP_WITH_DEPTH_ANYTHING)
+        runtime->operations.push_back({
+            "image.depth.depth-anything",
+            "Estimate depth with Depth Anything",
+            "Dense relative or metric depth estimation with optional confidence and camera pose",
+            IMAGECPP_TASK_DEPTH,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_DEPTH_MAP,
+        });
+#endif
 #if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
         runtime->operations.push_back({
             "image.generate.diffusion",

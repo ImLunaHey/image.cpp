@@ -18,6 +18,11 @@ int main(void) {
         generate_options.height != 512 || generate_options.batch_count != 1) {
         return 8;
     }
+    imagecpp_depth_options depth_options;
+    imagecpp_depth_options_init(&depth_options);
+    if (depth_options.struct_size != sizeof(depth_options) || depth_options.include_pose != 0) {
+        return 9;
+    }
     imagecpp_image_desc desc = {
         sizeof(imagecpp_image_desc), 1, 1, 0, IMAGECPP_PIXEL_FORMAT_RGB_U8, IMAGECPP_COLOR_SPACE_SRGB,
     };

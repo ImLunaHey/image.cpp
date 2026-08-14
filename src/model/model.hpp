@@ -60,6 +60,18 @@ struct ImageOutput {
     std::vector<uint8_t> data;
 };
 
+struct DepthOutput {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<float> depth;
+    std::vector<float> confidence;
+    std::vector<float> sky;
+    bool is_metric = false;
+    bool has_pose = false;
+    float extrinsics[12]{};
+    float intrinsics[9]{};
+};
+
 class Session {
   public:
     virtual ~Session() = default;
@@ -73,10 +85,14 @@ class Model {
     virtual std::unique_ptr<Session> create_session();
     virtual std::vector<ImageOutput> generate(const GenerateRequest &request);
     virtual ImageOutput upscale(const imagecpp_const_image_view &image, uint32_t factor);
+    virtual DepthOutput depth(const imagecpp_const_image_view &image, bool include_pose);
 };
 
 #if defined(IMAGECPP_WITH_SAM3)
 std::shared_ptr<Model> load_sam3_model(const imagecpp_model_options &options);
+#endif
+#if defined(IMAGECPP_WITH_DEPTH_ANYTHING)
+std::shared_ptr<Model> load_depth_anything_model(const imagecpp_model_options &options);
 #endif
 #if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
 std::shared_ptr<Model> load_diffusion_model(const imagecpp_diffusion_model_options &options);

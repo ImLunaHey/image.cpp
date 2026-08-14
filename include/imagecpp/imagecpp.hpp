@@ -333,6 +333,51 @@ inline ImageResult upscale(const Model &model, const Image &image, uint32_t fact
     return upscale(model, image.view(), factor);
 }
 
+class DepthResult final {
+  public:
+    ~DepthResult() { imagecpp_depth_result_destroy(handle_); }
+
+    DepthResult(const DepthResult &) = delete;
+    DepthResult &operator=(const DepthResult &) = delete;
+
+    DepthResult(DepthResult &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    DepthResult &operator=(DepthResult &&other) noexcept {
+        if (this != &other) {
+            imagecpp_depth_result_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    imagecpp_depth_info info() const {
+        imagecpp_depth_info result{};
+        result.struct_size = sizeof(result);
+        imagecpp_error error{};
+        check(imagecpp_depth_result_info(handle_, &result, &error), error);
+        return result;
+    }
+
+  private:
+    explicit DepthResult(imagecpp_depth_result *handle) noexcept : handle_(handle) {}
+
+    friend DepthResult depth(const Model &, const imagecpp_const_image_view &, const imagecpp_depth_options &);
+
+    imagecpp_depth_result *handle_ = nullptr;
+};
+
+inline DepthResult depth(const Model &model, const imagecpp_const_image_view &image,
+                         const imagecpp_depth_options &options) {
+    imagecpp_depth_result *result = nullptr;
+    imagecpp_error error{};
+    check(imagecpp_depth(model.get(), &image, &options, &result, &error), error);
+    return DepthResult(result);
+}
+
+inline DepthResult depth(const Model &model, const Image &image, const imagecpp_depth_options &options) {
+    return depth(model, image.view(), options);
+}
+
 struct SegmentInfo {
     imagecpp_const_image_view mask{};
     imagecpp_box box{};

@@ -216,6 +216,22 @@ typedef struct imagecpp_generate_options {
     const imagecpp_const_image_view *mask;
 } imagecpp_generate_options;
 
+typedef struct imagecpp_depth_options {
+    size_t struct_size;
+    int include_pose;
+} imagecpp_depth_options;
+
+typedef struct imagecpp_depth_info {
+    size_t struct_size;
+    imagecpp_const_image_view depth;
+    imagecpp_const_image_view confidence;
+    imagecpp_const_image_view sky;
+    int is_metric;
+    int has_pose;
+    float extrinsics[12];
+    float intrinsics[9];
+} imagecpp_depth_info;
+
 typedef struct imagecpp_point_prompt {
     float x;
     float y;
@@ -263,6 +279,7 @@ typedef struct imagecpp_runtime imagecpp_runtime;
 typedef struct imagecpp_session imagecpp_session;
 typedef struct imagecpp_segment_result imagecpp_segment_result;
 typedef struct imagecpp_image_result imagecpp_image_result;
+typedef struct imagecpp_depth_result imagecpp_depth_result;
 
 IMAGECPP_API uint32_t imagecpp_version(void);
 IMAGECPP_API const char *imagecpp_version_string(void);
@@ -338,6 +355,14 @@ IMAGECPP_API size_t imagecpp_image_result_count(const imagecpp_image_result *res
 IMAGECPP_API imagecpp_status imagecpp_image_result_view(const imagecpp_image_result *result, size_t index,
                                                         imagecpp_const_image_view *output, imagecpp_error *error);
 IMAGECPP_API void imagecpp_image_result_destroy(imagecpp_image_result *result);
+
+IMAGECPP_API void imagecpp_depth_options_init(imagecpp_depth_options *options);
+IMAGECPP_API imagecpp_status imagecpp_depth(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                            const imagecpp_depth_options *options, imagecpp_depth_result **output,
+                                            imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_depth_result_info(const imagecpp_depth_result *result,
+                                                        imagecpp_depth_info *output, imagecpp_error *error);
+IMAGECPP_API void imagecpp_depth_result_destroy(imagecpp_depth_result *result);
 
 IMAGECPP_API imagecpp_status imagecpp_resize(const imagecpp_const_image_view *source,
                                              const imagecpp_image_view *destination, imagecpp_resize_filter filter,

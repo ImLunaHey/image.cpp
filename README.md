@@ -10,7 +10,8 @@ workflows—without requiring Python at runtime.
 The repository currently provides the model-independent runtime foundation,
 native PNG/JPEG/WebP/BMP/TGA codecs, promptable SAM 2/SAM 3/EdgeTAM
 segmentation, transparent background removal, diffusion generation and editing,
-and ESRGAN upscaling. See [the architecture](docs/architecture.md) for the
+Depth Anything 2/3 estimation with optional camera pose, and ESRGAN upscaling.
+See [the architecture](docs/architecture.md) for the
 project boundary and roadmap.
 
 ## Intended capabilities
@@ -42,7 +43,9 @@ silently depend on a system copy.
 
 The model-backed composite is on by default. Use
 `-DIMAGECPP_WITH_SAM3=OFF` or `-DIMAGECPP_WITH_STABLE_DIFFUSION=OFF` for a
-smaller custom build. Both providers compile against one pinned GGML runtime.
+smaller custom build; depth can be removed with
+`-DIMAGECPP_WITH_DEPTH_ANYTHING=OFF`. All providers compile against one pinned
+GGML runtime.
 
 The runtime is implemented in-process. Development-time conversion and parity
 tools may use reference implementations, but shipped inference will not invoke
@@ -73,6 +76,15 @@ cmake --build build --target imagecpp_model_edgetam
 
 See [models](docs/models.md) for checksums, provenance, model licensing, device
 selection, and reusable session behavior.
+
+Estimate a dense depth map. The library returns the raw float map, confidence,
+metric/relative flag, and optional camera matrices; the CLI writes a normalized
+grayscale preview:
+
+```sh
+cmake --build build --target imagecpp_model_depth_anything
+./build/imagecpp depth models/depth-anything-base-q4_k.gguf input.jpg depth.png --pose
+```
 
 Download the validated generation and upscale models, then use the same binary
 for text-to-image, img2img/inpainting, and ESRGAN:

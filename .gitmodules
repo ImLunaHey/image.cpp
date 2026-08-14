@@ -13,3 +13,6 @@
 [submodule "external/ggml"]
 	path = external/ggml
 	url = https://github.com/PABannier/ggml.git
+[submodule "external/depth-anything"]
+	path = external/depth-anything
+	url = https://github.com/localai-org/depth-anything.cpp.git

@@ -1,3 +1,4 @@
+#include "depth_command.hpp"
 #include "imagecpp/imagecpp.hpp"
 #include "model_commands.hpp"
 
@@ -24,6 +25,7 @@ void print_usage(std::ostream &output) {
            << "  imagecpp generate <model> <output-image> <prompt> [generation options]\n"
            << "  imagecpp edit <model> <input-image> <output-image> <prompt> [generation options]\n"
            << "  imagecpp upscale <model> <input-image> <output-image> [upscale options]\n"
+           << "  imagecpp depth <model> <input-image> <output-image> [--pose] [--no-invert] [--threads N]\n"
            << "\nprompt options:\n"
            << "  --point <x>,<y>        positive point (repeatable)\n"
            << "  --negative <x>,<y>     negative point (repeatable)\n"
@@ -313,6 +315,9 @@ int main(int argc, char **argv) {
         }
         if (argc >= 2 && std::string(argv[1]) == "upscale") {
             return upscale_image_command(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "depth") {
+            return depth_command(argc, argv);
         }
         print_usage(argc == 1 ? std::cout : std::cerr);
         return argc == 1 ? 0 : 2;

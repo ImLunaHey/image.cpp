@@ -9,6 +9,7 @@ whose own notices and license texts remain authoritative:
 | libwebp | WebP codec | BSD 3-Clause | `external/libwebp/COPYING` |
 | sam3.cpp | SAM 2/SAM 3/EdgeTAM inference | MIT | `external/sam3/LICENSE` |
 | stable-diffusion.cpp | generation, editing, and ESRGAN inference | MIT | `external/stable-diffusion/LICENSE` |
+| depth-anything.cpp | Depth Anything 2/3 inference and preprocessing | MIT | `external/depth-anything/LICENSE` |
 | GGML | tensor runtime and device backends | MIT | `external/ggml/LICENSE` |
 
 Model weights are downloaded separately and are not covered by the image.cpp

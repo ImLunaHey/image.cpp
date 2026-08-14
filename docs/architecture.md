@@ -132,10 +132,10 @@ same parity and packaging contract.
 The first useful release should provide one binary containing:
 
 1. CLIP or SigLIP embeddings and zero-shot classification;
-2. SAM 2 or EdgeTAM segmentation;
-3. Depth Anything depth estimation;
-4. ESRGAN-class upscaling;
-5. generation and editing through an in-process native provider; and
+2. SAM 2 or EdgeTAM segmentation (implemented);
+3. Depth Anything depth estimation (implemented);
+4. ESRGAN-class upscaling (implemented);
+5. generation and editing through an in-process native provider (implemented); and
 6. at least one typed workflow joining multiple operations.
 
 Foundation work lands first: correct image buffers, resize/crop/normalize,
