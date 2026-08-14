@@ -71,12 +71,19 @@ prints probabilities normalized over the supplied labels. Use `embed-text`
 when an application needs complete control over the text prompt. Both image
 and text embeddings are unit-normalized 512-element vectors in the same space.
 
-## Add local generation and editing
+## Add grounding, generation, and editing
 
-The full bundle adds the 3.05 GB Stable Diffusion 1.5 Q4_0 checkpoint:
+The full bundle adds the 674 MiB SAM 3 Q4_0 grounding model and the 3.05 GB
+Stable Diffusion 1.5 Q4_0 checkpoint:
 
 ```sh
 cmake --build build --target imagecpp_models_full
+
+./build/imagecpp detect \
+  models/sam3-q4_0.ggml input.jpg "yellow school bus" --threshold 0.4
+
+./build/imagecpp ground \
+  models/sam3-q4_0.ggml input.jpg buses.png "yellow school bus"
 
 ./build/imagecpp generate \
   models/v1-5-pruned_Q4_0.gguf generated.png \
@@ -135,6 +142,29 @@ imagecpp::EmbeddingResult vector = imagecpp::embed_image(clip, input);
 imagecpp::ClassificationResult labels =
     imagecpp::classify(clip, input, {"cat", "dog", "bicycle"});
 imagecpp::ClassificationInfo best = labels.at(0);
+```
+
+Open-vocabulary detection reuses the same encoded-image session for successive
+concept prompts:
+
+```cpp
+imagecpp_model_options sam3_options{};
+imagecpp_model_options_init(&sam3_options);
+sam3_options.model_path = "models/sam3-q4_0.ggml";
+imagecpp::Model detector(runtime, "image.detect.sam3", sam3_options);
+imagecpp::Session detection_session(detector);
+detection_session.set_image(input);
+
+imagecpp_detect_options detect_options{};
+imagecpp_detect_options_init(&detect_options);
+detect_options.prompt = "yellow school bus";
+detect_options.score_threshold = 0.4F;
+
+imagecpp::DetectionResult detections = detection_session.detect(detect_options);
+for (size_t index = 0; index < detections.size(); ++index) {
+    imagecpp::DetectionInfo instance = detections.at(index);
+    // instance.box, instance.score, and instance.mask are typed artifacts.
+}
 ```
 
 Typed workflows use the same reusable model and session handles:

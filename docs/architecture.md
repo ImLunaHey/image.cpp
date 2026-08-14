@@ -66,6 +66,11 @@ ocr -> translate -> redraw
 caption -> prompt-enhance -> edit
 ```
 
+The detection, crop, upscale, segmentation, and remove-background primitives
+in the first two example paths are now implemented. The first shipped typed
+composition is the prompted cutout workflow; a general programmatic graph
+will build on the same artifact contracts.
+
 ## Runtime layers
 
 ```text

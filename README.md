@@ -9,10 +9,10 @@ workflows—without requiring Python at runtime.
 
 The repository currently provides the model-independent runtime foundation,
 native PNG/JPEG/WebP/BMP/TGA codecs, promptable SAM 2/SAM 3/EdgeTAM
-segmentation, transparent background removal, diffusion generation and editing,
-Depth Anything 2/3 estimation with optional camera pose, CLIP image/text
-embeddings and zero-shot classification, ESRGAN upscaling, and a typed
-segment-to-cutout workflow.
+segmentation, open-vocabulary SAM 3 detection and grounding, transparent
+background removal, diffusion generation and editing, Depth Anything 2/3
+estimation with optional camera pose, CLIP image/text embeddings and zero-shot
+classification, ESRGAN upscaling, and a typed segment-to-cutout workflow.
 See [the architecture](docs/architecture.md) for the
 project boundary and roadmap.
 
@@ -89,6 +89,20 @@ best mask, optionally crops with padding, upscales the still-opaque color
 image, resizes the mask, and emits transparent RGBA. Add `--keep-canvas` to
 retain the original extent. The C and C++ results also expose the final mask,
 source crop box, selected candidate, and model scores.
+
+Download the full 674 MiB SAM 3 Q4_0 model for open-vocabulary detection. The
+model returns a box, confidence, and pixel mask for every matching instance:
+
+```sh
+cmake --build build --target imagecpp_model_sam3_q4
+./build/imagecpp detect models/sam3-q4_0.ggml input.jpg "yellow school bus" --threshold 0.4
+./build/imagecpp ground models/sam3-q4_0.ggml input.jpg buses.png "yellow school bus"
+```
+
+`detect` emits structured JSON. `ground` unions the instance masks into a
+full-resolution grayscale mask. Positive and negative visual exemplars can be
+added with repeatable `--positive-box` and `--negative-box` options. A loaded
+session encodes its image once and can answer multiple text prompts.
 
 See [models](docs/models.md) for checksums, provenance, model licensing, device
 selection, and reusable session behavior.

@@ -58,6 +58,49 @@ and encoded image are reusable through the C and C++ session APIs, so an
 interactive application does not pay load and image-encoding costs for every
 prompt.
 
+## SAM 3 Q4_0
+
+The full `sam3-q4_0.ggml` checkpoint adds promptable concept segmentation: a
+short text phrase such as `yellow school bus` returns every matching instance
+with a box, confidence, and full-resolution mask. It also accepts repeatable
+positive and negative exemplar boxes. Download and verify the 706,606,590-byte
+(674 MiB) model with:
+
+```sh
+cmake --build build --target imagecpp_model_sam3_q4
+```
+
+Its SHA-256 is
+`5dafc790c8493319f542f575e718084f4e0a452fd7e483c64853d33ffe3f1889`.
+The GGML conversion comes from `PABannier/sam3.cpp`, repository revision
+`a3892b63b918e872671322e116982a8910f0ffb7`. The native `sam3.cpp` engine is
+MIT licensed. The underlying Meta checkpoint is governed separately by the
+[SAM License](https://github.com/facebookresearch/sam3/blob/main/LICENSE),
+including its redistribution and use conditions; it is not relicensed under
+image.cpp's MIT license and is never committed to this repository.
+
+Return JSON boxes and scores, or write the union of all matching masks:
+
+```sh
+./build/imagecpp detect \
+  models/sam3-q4_0.ggml input.jpg "yellow school bus" \
+  --threshold 0.4 --nms 0.1
+
+./build/imagecpp ground \
+  models/sam3-q4_0.ggml input.jpg buses.png "yellow school bus"
+```
+
+Use `--positive-box x0,y0,x1,y1` or `--negative-box x0,y0,x1,y1` to combine
+text with visual exemplars. The C and C++ APIs retain separate instance masks
+and label each result with the caller's prompt. Detection results are sorted
+by descending score. Empty results are a successful query with count zero.
+
+SAM 3 is open-vocabulary, but its scores are not calibrated truth and its noun
+phrase interpretation can miss instances or include false positives. Evaluate
+thresholds and representative data for the application. Text detection
+requires the full SAM 3 checkpoint; EdgeTAM and visual-only SAM variants return
+`UNSUPPORTED` instead of silently changing behavior.
+
 ## LAION CLIP ViT-B/32 Q4_0
 
 The starter semantic model is the 86 MB two-tower
@@ -213,6 +256,7 @@ I/O:
 | --- | --- | ---: | ---: |
 | EdgeTAM background removal | 1800x1200 JPEG | 1.06 s warm | 495 MB |
 | EdgeTAM -> crop -> RealESRGAN x4 -> alpha | 64x64 PNG to 256x160 RGBA | 1.48 s | 493 MB |
+| SAM 3 Q4 text grounding | 512x512 PNG, `cat`, cold | 12.18 s | 1.63 GB |
 | Depth Anything 3 Base Q4_K | 512x512 PNG + pose | 8.18 s cold | 644 MB |
 | CLIP zero-shot classification | 512x512 PNG, 3 labels | 0.10 s warm | 193 MB |
 | SD 1.5 Q4 text-to-image | 512x512, 8 steps | 15.75 s | 3.39 GB |
