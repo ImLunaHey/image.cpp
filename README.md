@@ -10,7 +10,8 @@ workflows—without requiring Python at runtime.
 The repository currently provides the model-independent runtime foundation,
 native PNG/JPEG/WebP/BMP/TGA codecs, promptable SAM 2/SAM 3/EdgeTAM
 segmentation, transparent background removal, diffusion generation and editing,
-Depth Anything 2/3 estimation with optional camera pose, and ESRGAN upscaling.
+Depth Anything 2/3 estimation with optional camera pose, CLIP image/text
+embeddings and zero-shot classification, and ESRGAN upscaling.
 See [the architecture](docs/architecture.md) for the
 project boundary and roadmap.
 
@@ -47,8 +48,9 @@ silently depend on a system copy.
 The model-backed composite is on by default. Use
 `-DIMAGECPP_WITH_SAM3=OFF` or `-DIMAGECPP_WITH_STABLE_DIFFUSION=OFF` for a
 smaller custom build; depth can be removed with
-`-DIMAGECPP_WITH_DEPTH_ANYTHING=OFF`. All providers compile against one pinned
-GGML runtime.
+`-DIMAGECPP_WITH_DEPTH_ANYTHING=OFF`, and CLIP with
+`-DIMAGECPP_WITH_CLIP=OFF`. All providers compile against one pinned GGML
+runtime.
 
 The runtime is implemented in-process. Development-time conversion and parity
 tools may use reference implementations, but shipped inference will not invoke
@@ -89,6 +91,20 @@ cmake --build build --target imagecpp_model_depth_anything
 ./build/imagecpp depth models/depth-anything-base-q4_k.gguf input.jpg depth.png --pose
 ```
 
+Download the 86 MB two-tower CLIP model once, then produce normalized joint
+embeddings or classify an image against labels supplied at runtime:
+
+```sh
+cmake --build build --target imagecpp_model_clip
+./build/imagecpp embed-image models/clip-vit-b-32-laion2b-q4_0.gguf input.jpg
+./build/imagecpp embed-text models/clip-vit-b-32-laion2b-q4_0.gguf "a photo of a red bicycle"
+./build/imagecpp classify models/clip-vit-b-32-laion2b-q4_0.gguf input.jpg cat dog bicycle
+```
+
+Embedding output is JSON containing a normalized 512-element vector.
+Classification output is sorted, tab-separated `label` and probability data;
+probabilities are normalized over the labels supplied in that invocation.
+
 Download the validated generation and upscale models, then use the same binary
 for text-to-image, img2img/inpainting, and ESRGAN:
 
@@ -115,11 +131,10 @@ for (const imagecpp::OperationInfo & operation : runtime.operations()) {
 }
 ```
 
-The C API offers the same file and memory codec operations. All ABI structs
-passed as outputs must have `struct_size` initialized by the caller. Images and
-encoded blobs allocated by the library must be released with
-`imagecpp_image_destroy` and `imagecpp_blob_destroy`; the C++ wrapper handles
-both with RAII.
+The C API offers the same file, memory codec, and inference operations. All ABI
+structs passed as outputs must have `struct_size` initialized by the caller.
+Every opaque image, blob, embedding, and classification result has a matching
+`imagecpp_*_destroy` function; the C++ wrapper handles all of them with RAII.
 
 ## Project status
 

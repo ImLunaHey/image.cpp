@@ -42,6 +42,49 @@ and encoded image are reusable through the C and C++ session APIs, so an
 interactive application does not pay load and image-encoding costs for every
 prompt.
 
+## LAION CLIP ViT-B/32 Q4_0
+
+The starter semantic model is the 86 MB two-tower
+`clip-vit-b-32-laion2b-q4_0.gguf`. Its image and text towers emit normalized
+512-element vectors in one shared space, enabling cosine-similarity search and
+zero-shot classification without a fixed label set. Download and verify it
+with:
+
+```sh
+cmake --build build --target imagecpp_model_clip
+```
+
+Its SHA-256 is
+`66aa926f26c468a5eb400e97b8bbcf80444f6f0fc59d6927f8bea47548a04ce2`.
+The file comes from `mys/ggml_CLIP-ViT-B-32-laion2B-s34B-b79K`, repository
+revision `26ebd3e1648320e965df9e69ca01963d144cb380`, and was converted from the
+LAION OpenCLIP ViT-B/32 checkpoint. The model repository identifies the weight
+license as MIT. The native engine is derived from MIT-licensed `clip.cpp`,
+modernized to use image.cpp's single pinned GGML runtime.
+
+```sh
+./build/imagecpp embed-image \
+  models/clip-vit-b-32-laion2b-q4_0.gguf input.jpg
+
+./build/imagecpp embed-text \
+  models/clip-vit-b-32-laion2b-q4_0.gguf "a photo of a tabby cat"
+
+./build/imagecpp classify \
+  models/clip-vit-b-32-laion2b-q4_0.gguf input.jpg cat dog truck
+```
+
+Image preprocessing is native: sRGB conversion, aspect-preserving antialiased
+bicubic resize, center crop, and the mean/std stored in the GGUF. The current
+CLIP engine runs on CPU; `IMAGECPP_DEVICE_GPU` returns `UNSUPPORTED` rather
+than silently changing devices. The loaded model serializes calls internally
+because its compute arena is reused across requests.
+
+CLIP labels are open-vocabulary similarities, not calibrated ground truth.
+Results depend strongly on the candidate taxonomy and prompt wording. This
+checkpoint is English-focused, trained on uncurated web data, and should be
+evaluated for bias and safety in the intended domain; surveillance and facial
+recognition are outside its model card's intended use.
+
 ## Depth Anything 3 Base Q4_K
 
 The starter understanding model is the 104 MB
@@ -154,6 +197,7 @@ I/O:
 | --- | --- | ---: | ---: |
 | EdgeTAM background removal | 1800x1200 JPEG | 1.06 s warm | 495 MB |
 | Depth Anything 3 Base Q4_K | 512x512 PNG + pose | 8.18 s cold | 644 MB |
+| CLIP zero-shot classification | 512x512 PNG, 3 labels | 0.10 s warm | 193 MB |
 | SD 1.5 Q4 text-to-image | 512x512, 8 steps | 15.75 s | 3.39 GB |
 | SD 1.5 Q4 img2img | 512x512, 4 effective steps | 12.68 s | 3.64 GB |
 | RealESRGAN x4 | 2x2 fixture to 8x8 | 1.05 s | 78 MB |

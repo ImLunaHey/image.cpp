@@ -10,6 +10,7 @@ whose own notices and license texts remain authoritative:
 | sam3.cpp | SAM 2/SAM 3/EdgeTAM inference | MIT | `external/sam3/LICENSE` |
 | stable-diffusion.cpp | generation, editing, and ESRGAN inference | MIT | `external/stable-diffusion/LICENSE` |
 | depth-anything.cpp | Depth Anything 2/3 inference and preprocessing | MIT | `external/depth-anything/LICENSE` |
+| clip.cpp-derived engine | CLIP image/text inference and preprocessing | MIT | `external/clipcpp/LICENSE` |
 | GGML | tensor runtime and device backends | MIT | `external/ggml/LICENSE` |
 
 Model weights are downloaded separately and are not covered by the image.cpp
@@ -17,4 +18,5 @@ license. Their provenance, checksums, and licenses are recorded in
 [`docs/models.md`](docs/models.md).
 
 Redistributors must preserve the applicable third-party notices. The complete
-license text for each pinned dependency is present in its submodule directory.
+license text for each pinned or vendored dependency is present in its source
+directory.

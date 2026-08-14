@@ -131,7 +131,7 @@ same parity and packaging contract.
 
 The first useful release should provide one binary containing:
 
-1. CLIP or SigLIP embeddings and zero-shot classification;
+1. CLIP embeddings and zero-shot classification (implemented);
 2. SAM 2 or EdgeTAM segmentation (implemented);
 3. Depth Anything depth estimation (implemented);
 4. ESRGAN-class upscaling (implemented);

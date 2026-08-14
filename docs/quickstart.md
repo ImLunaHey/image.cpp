@@ -17,8 +17,9 @@ A normal runtime build does not need Python.
 
 ## Get the starter models
 
-The starter bundle is about 131 MB and enables promptable segmentation,
-background removal, dense depth with optional camera pose, and 4x upscaling:
+The starter bundle is about 217 MB and enables promptable segmentation,
+background removal, dense depth with optional camera pose, joint image/text
+embeddings, zero-shot classification, and 4x upscaling:
 
 ```sh
 cmake --build build --target imagecpp_models_starter
@@ -42,11 +43,22 @@ Given an `input.jpg`, try:
 
 ./build/imagecpp upscale \
   models/RealESRGAN_x4plus_anime_6B.pth input.jpg upscaled.png --factor 4
+
+./build/imagecpp classify \
+  models/clip-vit-b-32-laion2b-q4_0.gguf input.jpg cat dog bicycle
+
+./build/imagecpp embed-image \
+  models/clip-vit-b-32-laion2b-q4_0.gguf input.jpg > embedding.json
 ```
 
 Prompt coordinates are image pixels. A positive point should be inside the
 object; add repeatable `--negative x,y` points outside it or use
 `--box x0,y0,x1,y1` when the initial mask is ambiguous.
+
+`classify` applies the standard `a photo of a <label>` prompt template and
+prints probabilities normalized over the supplied labels. Use `embed-text`
+when an application needs complete control over the text prompt. Both image
+and text embeddings are unit-normalized 512-element vectors in the same space.
 
 ## Add local generation and editing
 
@@ -98,6 +110,20 @@ imagecpp::DepthResult result = imagecpp::depth(model, input, depth_options);
 imagecpp_depth_info info = result.info();
 const float *depth = static_cast<const float *>(info.depth.data);
 // depth remains valid until result is destroyed.
+```
+
+The same ownership model applies to semantic results:
+
+```cpp
+imagecpp_model_options clip_options{};
+imagecpp_model_options_init(&clip_options);
+clip_options.model_path = "models/clip-vit-b-32-laion2b-q4_0.gguf";
+imagecpp::Model clip(runtime, "image.embed.clip", clip_options);
+
+imagecpp::EmbeddingResult vector = imagecpp::embed_image(clip, input);
+imagecpp::ClassificationResult labels =
+    imagecpp::classify(clip, input, {"cat", "dog", "bicycle"});
+imagecpp::ClassificationInfo best = labels.at(0);
 ```
 
 Installed consumers use `find_package(imagecpp CONFIG REQUIRED)` and link
