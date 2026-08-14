@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        shared:
+          - "OFF"
+          - "ON"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build
+          -DIMAGECPP_BUILD_CLI=ON
+          -DIMAGECPP_BUILD_TESTS=ON
+          -DIMAGECPP_BUILD_SHARED=${{ matrix.shared }}
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Install
+        run: cmake --install build --config Release --prefix "${{ runner.temp }}/imagecpp-install"
+
+      - name: Configure package consumer
+        run: >-
+          cmake -S tests/package -B package-build
+          -DCMAKE_PREFIX_PATH="${{ runner.temp }}/imagecpp-install"
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build package consumer
+        run: cmake --build package-build --config Release --parallel
+
+      - name: Test package consumer
+        run: ctest --test-dir package-build -C Release --output-on-failure
