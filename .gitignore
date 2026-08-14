@@ -1,6 +1,8 @@
 /build/
 /build-*/
 /out/
+/models/
+/output/
 /.cache/
 .DS_Store
 *.dSYM/

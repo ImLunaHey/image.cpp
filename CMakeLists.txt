@@ -14,6 +14,8 @@ option(IMAGECPP_BUILD_CLI "Build the imagecpp command-line tool" ON)
 option(IMAGECPP_BUILD_TESTS "Build image.cpp tests" OFF)
 option(IMAGECPP_BUILD_SHARED "Build libimagecpp as a shared library" OFF)
 option(IMAGECPP_WITH_WEBP "Build WebP decoding and encoding support" ON)
+option(IMAGECPP_WITH_SAM3 "Build SAM 2/SAM 3/EdgeTAM segmentation support" ON)
+set(IMAGECPP_TEST_SAM_MODEL "" CACHE FILEPATH "Optional SAM/EdgeTAM model used by integration tests")
 
 function(imagecpp_enable_warnings target)
     if(MSVC)
@@ -34,6 +36,7 @@ add_library(imagecpp ${IMAGECPP_LIBRARY_TYPE}
     src/image/image.cpp
     src/image/layout.cpp
     src/image/resize.cpp
+    src/model/model.cpp
     src/runtime/runtime.cpp
     src/version.cpp
 )
@@ -87,6 +90,67 @@ if(IMAGECPP_WITH_WEBP)
     target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_WEBP=1)
 endif()
 
+if(IMAGECPP_WITH_SAM3)
+    set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
+    set(GGML_CCACHE OFF CACHE BOOL "" FORCE)
+    set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+    set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+    if(APPLE)
+        set(GGML_METAL ON CACHE BOOL "" FORCE)
+        set(GGML_METAL_EMBED_LIBRARY ON CACHE BOOL "" FORCE)
+    endif()
+
+    set(IMAGECPP_SAVED_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
+    set(BUILD_SHARED_LIBS OFF)
+    add_subdirectory(external/sam3/ggml)
+    set(BUILD_SHARED_LIBS ${IMAGECPP_SAVED_BUILD_SHARED_LIBS})
+    unset(IMAGECPP_SAVED_BUILD_SHARED_LIBS)
+    foreach(ggml_target ggml ggml-base ${GGML_AVAILABLE_BACKENDS})
+        if(TARGET ${ggml_target})
+            set_target_properties(${ggml_target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        endif()
+    endforeach()
+
+    add_library(imagecpp_sam3_engine OBJECT external/sam3/sam3.cpp)
+    target_compile_features(imagecpp_sam3_engine PRIVATE cxx_std_14)
+    target_include_directories(imagecpp_sam3_engine PRIVATE
+        external/sam3
+        external/sam3/stb
+    )
+    target_compile_definitions(imagecpp_sam3_engine PRIVATE
+        SAM3_LOG_LEVEL=0
+        STB_IMAGE_STATIC
+        STB_IMAGE_WRITE_STATIC
+    )
+    target_link_libraries(imagecpp_sam3_engine PRIVATE ggml::ggml)
+    set_target_properties(imagecpp_sam3_engine PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+        POSITION_INDEPENDENT_CODE YES
+    )
+
+    target_sources(imagecpp PRIVATE
+        src/provider/sam3_provider.cpp
+        $<TARGET_OBJECTS:imagecpp_sam3_engine>
+    )
+    target_include_directories(imagecpp PRIVATE external/sam3)
+    target_link_libraries(imagecpp PRIVATE ggml::ggml)
+    target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_SAM3=1)
+
+    set(IMAGECPP_EDGETAM_MODEL "${CMAKE_CURRENT_SOURCE_DIR}/models/edgetam_q4_0.ggml")
+    add_custom_command(
+        OUTPUT "${IMAGECPP_EDGETAM_MODEL}"
+        COMMAND ${CMAKE_COMMAND}
+            -DIMAGECPP_MODEL_OUTPUT="${IMAGECPP_EDGETAM_MODEL}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/download_edgetam.cmake"
+        COMMENT "Downloading the validated EdgeTAM Q4 model"
+        VERBATIM
+    )
+    add_custom_target(imagecpp_model_edgetam DEPENDS "${IMAGECPP_EDGETAM_MODEL}")
+endif()
+
 if(IMAGECPP_BUILD_CLI)
     add_executable(imagecpp_cli
         app/main.cpp
@@ -102,7 +166,10 @@ if(IMAGECPP_BUILD_TESTS)
     add_executable(imagecpp_tests tests/test_imagecpp.cpp)
     target_compile_features(imagecpp_tests PRIVATE cxx_std_17)
     target_link_libraries(imagecpp_tests PRIVATE imagecpp::imagecpp)
-    target_compile_definitions(imagecpp_tests PRIVATE $<$<BOOL:${IMAGECPP_WITH_WEBP}>:IMAGECPP_TEST_WITH_WEBP=1>)
+    target_compile_definitions(imagecpp_tests PRIVATE
+        $<$<BOOL:${IMAGECPP_WITH_WEBP}>:IMAGECPP_TEST_WITH_WEBP=1>
+        $<$<BOOL:${IMAGECPP_WITH_SAM3}>:IMAGECPP_TEST_WITH_SAM3=1>
+    )
     imagecpp_enable_warnings(imagecpp_tests)
     add_test(NAME imagecpp.unit COMMAND imagecpp_tests)
     add_executable(imagecpp_c_api_test tests/test_c_api.c)
@@ -120,6 +187,16 @@ if(IMAGECPP_BUILD_TESTS)
                 5x3
                 bilinear
         )
+        if(IMAGECPP_WITH_SAM3 AND IMAGECPP_TEST_SAM_MODEL)
+            add_test(
+                NAME imagecpp.cli.segment-model
+                COMMAND imagecpp_cli segment
+                    "${IMAGECPP_TEST_SAM_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/2x2.ppm"
+                    "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-cli-mask.png"
+                    --point 1,1
+            )
+        endif()
     endif()
 endif()
 
@@ -130,10 +207,35 @@ install(TARGETS imagecpp
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
+if(IMAGECPP_WITH_SAM3)
+    set(IMAGECPP_GGML_TARGETS ggml ggml-base)
+    foreach(backend IN LISTS GGML_AVAILABLE_BACKENDS)
+        if(TARGET ${backend})
+            list(APPEND IMAGECPP_GGML_TARGETS ${backend})
+        endif()
+    endforeach()
+    get_target_property(IMAGECPP_GGML_PUBLIC_HEADERS ggml PUBLIC_HEADER)
+    set_target_properties(ggml PROPERTIES PUBLIC_HEADER "")
+    install(TARGETS ${IMAGECPP_GGML_TARGETS}
+        EXPORT imagecppTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+    set_target_properties(ggml PROPERTIES PUBLIC_HEADER "${IMAGECPP_GGML_PUBLIC_HEADERS}")
+    unset(IMAGECPP_GGML_PUBLIC_HEADERS)
+endif()
 if(IMAGECPP_BUILD_CLI)
     install(TARGETS imagecpp_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES LICENSE THIRD_PARTY.md DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp)
+install(FILES external/stb/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME stb.txt)
+install(FILES external/libwebp/COPYING DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME libwebp.txt)
+if(IMAGECPP_WITH_SAM3)
+    install(FILES external/sam3/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME sam3.cpp.txt)
+    install(FILES external/sam3/ggml/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME ggml.txt)
+endif()
 
 write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/imagecppConfigVersion.cmake"

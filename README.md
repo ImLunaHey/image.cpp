@@ -7,11 +7,11 @@ one embeddable library, one command-line tool, and eventually one server for
 generation, editing, understanding, restoration, and composable image
 workflows—without requiring Python at runtime.
 
-The repository currently provides the model-independent runtime foundation:
-public image types, runtime introspection, image validation, allocation,
-resizing, and native PNG/JPEG/WebP/BMP/TGA codecs. Model-backed providers are
-the next active milestone. See
-[the architecture](docs/architecture.md) for the project boundary and roadmap.
+The repository currently provides the model-independent runtime foundation,
+native PNG/JPEG/WebP/BMP/TGA codecs, and a first model-backed vertical slice:
+promptable SAM 2/SAM 3/EdgeTAM segmentation plus transparent background
+removal. See [the architecture](docs/architecture.md) for the project boundary
+and roadmap.
 
 ## Intended capabilities
 
@@ -58,6 +58,18 @@ Resize between common image formats; the output extension selects the encoder:
 ./build/imagecpp resize input.jpg output.webp 1024x1024 bilinear
 ```
 
+Download the validated 15 MB EdgeTAM model and run real point- or box-prompted
+segmentation:
+
+```sh
+cmake --build build --target imagecpp_model_edgetam
+./build/imagecpp segment models/edgetam_q4_0.ggml input.jpg mask.png --point 640,420
+./build/imagecpp remove-background models/edgetam_q4_0.ggml input.jpg cutout.png --box 120,80,1100,760
+```
+
+See [models](docs/models.md) for checksums, provenance, model licensing, device
+selection, and reusable session behavior.
+
 The CLI intentionally consumes only the installed C++ wrapper. Applications
 can use the same library directly:
 
@@ -89,5 +101,5 @@ manifests for multi-component families.
 ## License
 
 `image.cpp` is available under the [MIT License](LICENSE). Model weights and
-optional providers retain their own licenses, recorded separately from the
-runtime license.
+third-party dependencies retain their own licenses; see
+[third-party notices](THIRD_PARTY.md) and [models](docs/models.md).

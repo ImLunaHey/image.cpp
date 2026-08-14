@@ -233,8 +233,122 @@ class Runtime final {
         return result;
     }
 
+    imagecpp_runtime *get() noexcept { return handle_; }
+    const imagecpp_runtime *get() const noexcept { return handle_; }
+
   private:
     imagecpp_runtime *handle_ = nullptr;
+};
+
+class Model final {
+  public:
+    Model(const Runtime &runtime, const std::string &operation_id, const imagecpp_model_options &options) {
+        imagecpp_error error{};
+        check(imagecpp_model_load(runtime.get(), operation_id.c_str(), &options, &handle_, &error), error);
+    }
+
+    ~Model() { imagecpp_model_destroy(handle_); }
+
+    Model(const Model &) = delete;
+    Model &operator=(const Model &) = delete;
+
+    Model(Model &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    Model &operator=(Model &&other) noexcept {
+        if (this != &other) {
+            imagecpp_model_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    imagecpp_model *get() noexcept { return handle_; }
+    const imagecpp_model *get() const noexcept { return handle_; }
+
+  private:
+    imagecpp_model *handle_ = nullptr;
+};
+
+struct SegmentInfo {
+    imagecpp_const_image_view mask{};
+    imagecpp_box box{};
+    float score = 0.0F;
+    float iou_score = 0.0F;
+};
+
+class SegmentResult final {
+  public:
+    ~SegmentResult() { imagecpp_segment_result_destroy(handle_); }
+
+    SegmentResult(const SegmentResult &) = delete;
+    SegmentResult &operator=(const SegmentResult &) = delete;
+
+    SegmentResult(SegmentResult &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    SegmentResult &operator=(SegmentResult &&other) noexcept {
+        if (this != &other) {
+            imagecpp_segment_result_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    size_t size() const noexcept { return imagecpp_segment_result_count(handle_); }
+
+    SegmentInfo at(size_t index) const {
+        imagecpp_segment_info info{};
+        info.struct_size = sizeof(info);
+        imagecpp_error error{};
+        check(imagecpp_segment_result_info(handle_, index, &info, &error), error);
+        return {info.mask, info.box, info.score, info.iou_score};
+    }
+
+  private:
+    explicit SegmentResult(imagecpp_segment_result *handle) noexcept : handle_(handle) {}
+
+    friend class Session;
+
+    imagecpp_segment_result *handle_ = nullptr;
+};
+
+class Session final {
+  public:
+    explicit Session(const Model &model) {
+        imagecpp_error error{};
+        check(imagecpp_session_create(model.get(), &handle_, &error), error);
+    }
+
+    ~Session() { imagecpp_session_destroy(handle_); }
+
+    Session(const Session &) = delete;
+    Session &operator=(const Session &) = delete;
+
+    Session(Session &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    Session &operator=(Session &&other) noexcept {
+        if (this != &other) {
+            imagecpp_session_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    void set_image(const imagecpp_const_image_view &image) {
+        imagecpp_error error{};
+        check(imagecpp_session_set_image(handle_, &image, &error), error);
+    }
+
+    void set_image(const Image &image) { set_image(image.view()); }
+
+    SegmentResult segment(const imagecpp_segment_options &options) {
+        imagecpp_segment_result *result = nullptr;
+        imagecpp_error error{};
+        check(imagecpp_segment(handle_, &options, &result, &error), error);
+        return SegmentResult(result);
+    }
+
+  private:
+    imagecpp_session *handle_ = nullptr;
 };
 
 inline void resize(const imagecpp_const_image_view &source, const imagecpp_image_view &destination,

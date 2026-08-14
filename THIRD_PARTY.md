@@ -1,0 +1,18 @@
+# Third-party notices
+
+`image.cpp` is MIT-licensed. It includes pinned third-party source dependencies
+whose own notices and license texts remain authoritative:
+
+| Component | Use | License | License text |
+| --- | --- | --- | --- |
+| stb | PNG/JPEG/BMP/TGA codecs | MIT or public domain | `external/stb/LICENSE` |
+| libwebp | WebP codec | BSD 3-Clause | `external/libwebp/COPYING` |
+| sam3.cpp | SAM 2/SAM 3/EdgeTAM inference | MIT | `external/sam3/LICENSE` |
+| GGML | tensor runtime and device backends | MIT | `external/sam3/ggml/LICENSE` |
+
+Model weights are downloaded separately and are not covered by the image.cpp
+license. Their provenance, checksums, and licenses are recorded in
+[`docs/models.md`](docs/models.md).
+
+Redistributors must preserve the applicable third-party notices. The complete
+license text for each pinned dependency is present in its submodule directory.

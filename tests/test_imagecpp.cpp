@@ -60,10 +60,38 @@ void test_version_and_runtime() {
     require(std::string(imagecpp_version_string()) == "0.1.0-dev", "unexpected version string");
     imagecpp::Runtime runtime;
     const auto operations = runtime.operations();
+#if defined(IMAGECPP_TEST_WITH_SAM3)
+    require(operations.size() == 2, "runtime should expose utility and SAM operations");
+#else
     require(operations.size() == 1, "runtime should expose one foundation operation");
+#endif
     require(operations[0].id == "image.resize", "runtime should expose image.resize");
     require(operations[0].input_kind == IMAGECPP_ARTIFACT_IMAGE, "resize should consume an image");
     require(operations[0].output_kind == IMAGECPP_ARTIFACT_IMAGE, "resize should emit an image");
+#if defined(IMAGECPP_TEST_WITH_SAM3)
+    require(operations[1].id == "image.segment.sam", "runtime should expose image.segment.sam");
+    require(operations[1].task == IMAGECPP_TASK_SEGMENT, "SAM operation task mismatch");
+#endif
+}
+
+void test_model_api_validation() {
+    imagecpp::Runtime runtime;
+    imagecpp_model_options options{};
+    imagecpp_model_options_init(&options);
+    options.model_path = "/path/that/does/not/exist.ggml";
+    imagecpp_model *model = nullptr;
+    imagecpp_error error{};
+    const imagecpp_status status = imagecpp_model_load(runtime.get(), "image.segment.sam", &options, &model, &error);
+#if defined(IMAGECPP_TEST_WITH_SAM3)
+    require(status == IMAGECPP_STATUS_MODEL_ERROR, "invalid SAM path should return a model error");
+#else
+    require(status == IMAGECPP_STATUS_UNSUPPORTED, "disabled SAM provider should return unsupported");
+#endif
+    require(model == nullptr, "failed model load returned a handle");
+
+    imagecpp_segment_options segment_options{};
+    imagecpp_segment_options_init(&segment_options);
+    require(segment_options.struct_size == sizeof(segment_options), "segment options initializer is invalid");
 }
 
 void test_layout_validation() {
@@ -252,6 +280,7 @@ void test_codec_errors() {
 int main() {
     try {
         test_version_and_runtime();
+        test_model_api_validation();
         test_layout_validation();
         test_nearest_resize();
         test_bilinear_resize_u8();

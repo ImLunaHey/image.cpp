@@ -38,6 +38,12 @@ const char *imagecpp_status_string(imagecpp_status status) {
         return "out of memory";
     case IMAGECPP_STATUS_INTERNAL:
         return "internal error";
+    case IMAGECPP_STATUS_IO_ERROR:
+        return "I/O error";
+    case IMAGECPP_STATUS_MODEL_ERROR:
+        return "model error";
+    case IMAGECPP_STATUS_NOT_READY:
+        return "not ready";
     }
     return "unknown status";
 }

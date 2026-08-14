@@ -31,7 +31,10 @@ typedef enum imagecpp_status {
     IMAGECPP_STATUS_OUT_OF_RANGE = 2,
     IMAGECPP_STATUS_UNSUPPORTED = 3,
     IMAGECPP_STATUS_OUT_OF_MEMORY = 4,
-    IMAGECPP_STATUS_INTERNAL = 5
+    IMAGECPP_STATUS_INTERNAL = 5,
+    IMAGECPP_STATUS_IO_ERROR = 6,
+    IMAGECPP_STATUS_MODEL_ERROR = 7,
+    IMAGECPP_STATUS_NOT_READY = 8
 } imagecpp_status;
 
 typedef struct imagecpp_error {
@@ -60,6 +63,12 @@ typedef enum imagecpp_resize_filter {
     IMAGECPP_RESIZE_NEAREST = 0,
     IMAGECPP_RESIZE_BILINEAR = 1
 } imagecpp_resize_filter;
+
+typedef enum imagecpp_device {
+    IMAGECPP_DEVICE_AUTO = 0,
+    IMAGECPP_DEVICE_CPU = 1,
+    IMAGECPP_DEVICE_GPU = 2
+} imagecpp_device;
 
 typedef enum imagecpp_file_format {
     IMAGECPP_FILE_FORMAT_AUTO = 0,
@@ -140,6 +149,43 @@ typedef struct imagecpp_encode_options {
     int lossless;
 } imagecpp_encode_options;
 
+typedef struct imagecpp_model_options {
+    size_t struct_size;
+    const char *model_path;
+    int32_t threads;
+    imagecpp_device device;
+} imagecpp_model_options;
+
+typedef struct imagecpp_point_prompt {
+    float x;
+    float y;
+    int positive;
+} imagecpp_point_prompt;
+
+typedef struct imagecpp_box {
+    float x0;
+    float y0;
+    float x1;
+    float y1;
+} imagecpp_box;
+
+typedef struct imagecpp_segment_options {
+    size_t struct_size;
+    const imagecpp_point_prompt *points;
+    size_t point_count;
+    imagecpp_box box;
+    int use_box;
+    int multimask;
+} imagecpp_segment_options;
+
+typedef struct imagecpp_segment_info {
+    size_t struct_size;
+    imagecpp_const_image_view mask;
+    imagecpp_box box;
+    float score;
+    float iou_score;
+} imagecpp_segment_info;
+
 typedef struct imagecpp_operation_info {
     size_t struct_size;
     const char *id;
@@ -152,7 +198,10 @@ typedef struct imagecpp_operation_info {
 
 typedef struct imagecpp_image imagecpp_image;
 typedef struct imagecpp_blob imagecpp_blob;
+typedef struct imagecpp_model imagecpp_model;
 typedef struct imagecpp_runtime imagecpp_runtime;
+typedef struct imagecpp_session imagecpp_session;
+typedef struct imagecpp_segment_result imagecpp_segment_result;
 
 IMAGECPP_API uint32_t imagecpp_version(void);
 IMAGECPP_API const char *imagecpp_version_string(void);
@@ -191,6 +240,25 @@ IMAGECPP_API imagecpp_status imagecpp_image_save(const char *filename, const ima
 IMAGECPP_API const void *imagecpp_blob_data(const imagecpp_blob *blob);
 IMAGECPP_API size_t imagecpp_blob_size(const imagecpp_blob *blob);
 IMAGECPP_API void imagecpp_blob_destroy(imagecpp_blob *blob);
+
+IMAGECPP_API void imagecpp_model_options_init(imagecpp_model_options *options);
+IMAGECPP_API imagecpp_status imagecpp_model_load(const imagecpp_runtime *runtime, const char *operation_id,
+                                                 const imagecpp_model_options *options, imagecpp_model **output,
+                                                 imagecpp_error *error);
+IMAGECPP_API void imagecpp_model_destroy(imagecpp_model *model);
+IMAGECPP_API imagecpp_status imagecpp_session_create(const imagecpp_model *model, imagecpp_session **output,
+                                                     imagecpp_error *error);
+IMAGECPP_API void imagecpp_session_destroy(imagecpp_session *session);
+IMAGECPP_API imagecpp_status imagecpp_session_set_image(imagecpp_session *session,
+                                                        const imagecpp_const_image_view *image, imagecpp_error *error);
+
+IMAGECPP_API void imagecpp_segment_options_init(imagecpp_segment_options *options);
+IMAGECPP_API imagecpp_status imagecpp_segment(imagecpp_session *session, const imagecpp_segment_options *options,
+                                              imagecpp_segment_result **output, imagecpp_error *error);
+IMAGECPP_API size_t imagecpp_segment_result_count(const imagecpp_segment_result *result);
+IMAGECPP_API imagecpp_status imagecpp_segment_result_info(const imagecpp_segment_result *result, size_t index,
+                                                          imagecpp_segment_info *output, imagecpp_error *error);
+IMAGECPP_API void imagecpp_segment_result_destroy(imagecpp_segment_result *result);
 
 IMAGECPP_API imagecpp_status imagecpp_resize(const imagecpp_const_image_view *source,
                                              const imagecpp_image_view *destination, imagecpp_resize_filter filter,

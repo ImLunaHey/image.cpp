@@ -40,6 +40,16 @@ imagecpp_status imagecpp_runtime_create(imagecpp_runtime **output, imagecpp_erro
             IMAGECPP_ARTIFACT_IMAGE,
             IMAGECPP_ARTIFACT_IMAGE,
         });
+#if defined(IMAGECPP_WITH_SAM3)
+        runtime->operations.push_back({
+            "image.segment.sam",
+            "Segment with SAM",
+            "Point- and box-prompted segmentation with SAM 2, SAM 3, or EdgeTAM",
+            IMAGECPP_TASK_SEGMENT,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_MASK,
+        });
+#endif
         *output = runtime;
         return imagecpp::core::succeed(error);
     } catch (const std::bad_alloc &) {

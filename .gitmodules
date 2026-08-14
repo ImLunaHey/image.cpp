@@ -4,3 +4,6 @@
 [submodule "external/libwebp"]
 	path = external/libwebp
 	url = https://chromium.googlesource.com/webm/libwebp
+[submodule "external/sam3"]
+	path = external/sam3
+	url = https://github.com/PABannier/sam3.cpp.git
