@@ -1,0 +1,8 @@
+/build/
+/build-*/
+/out/
+/.cache/
+.DS_Store
+*.dSYM/
+compile_commands.json
+
