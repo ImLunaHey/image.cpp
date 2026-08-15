@@ -108,8 +108,8 @@ imagecpp::Image decode_request_image(const httplib::Request &request, const std:
 uint32_t parse_uint32(const std::string &value, const char *name, bool allow_zero) {
     uint64_t parsed = 0;
     const auto conversion = std::from_chars(value.data(), value.data() + value.size(), parsed);
-    if (conversion.ec != std::errc() || conversion.ptr != value.data() + value.size() ||
-        (!allow_zero && parsed == 0) || parsed > std::numeric_limits<uint32_t>::max()) {
+    if (conversion.ec != std::errc() || conversion.ptr != value.data() + value.size() || (!allow_zero && parsed == 0) ||
+        parsed > std::numeric_limits<uint32_t>::max()) {
         throw std::invalid_argument(std::string("invalid ") + name);
     }
     return static_cast<uint32_t>(parsed);
@@ -225,7 +225,8 @@ void set_image(httplib::Response &response, const imagecpp_const_image_view &ima
     options.lossless = lossless ? 1 : 0;
     const imagecpp::Blob encoded = imagecpp::encode(image, format, &options);
     response.status = 200;
-    response.set_content(std::string(static_cast<const char *>(encoded.data()), encoded.size()), image_mime_type(format));
+    response.set_content(std::string(static_cast<const char *>(encoded.data()), encoded.size()),
+                         image_mime_type(format));
 }
 
 void set_image(httplib::Response &response, const imagecpp::Image &image, imagecpp_file_format format, int quality,

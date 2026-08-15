@@ -99,8 +99,9 @@ imagecpp::Image visualized_float_map(const imagecpp_const_image_view &input, boo
     if (!std::isfinite(minimum) || !std::isfinite(maximum)) {
         throw std::runtime_error("model returned no finite float image values");
     }
-    const imagecpp_image_desc description{sizeof(imagecpp_image_desc), input.width, input.height, 0,
-                                          IMAGECPP_PIXEL_FORMAT_GRAY_U8, IMAGECPP_COLOR_SPACE_UNKNOWN};
+    const imagecpp_image_desc description{
+        sizeof(imagecpp_image_desc), input.width, input.height, 0, IMAGECPP_PIXEL_FORMAT_GRAY_U8,
+        IMAGECPP_COLOR_SPACE_UNKNOWN};
     imagecpp::Image output(description);
     const imagecpp_image_view output_view = output.view();
     const float range = maximum - minimum;
@@ -110,9 +111,8 @@ imagecpp::Image visualized_float_map(const imagecpp_const_image_view &input, boo
         auto *destination =
             static_cast<uint8_t *>(output_view.data) + static_cast<size_t>(row) * output_view.row_stride;
         for (uint32_t column = 0; column < input.width; ++column) {
-            float normalized = range > 0.0F && std::isfinite(source[column])
-                                   ? (source[column] - minimum) / range
-                                   : 0.0F;
+            float normalized =
+                range > 0.0F && std::isfinite(source[column]) ? (source[column] - minimum) / range : 0.0F;
             if (invert) {
                 normalized = 1.0F - normalized;
             }
@@ -187,8 +187,7 @@ imagecpp_box parse_box(const detail::Json &value, const char *name) {
         throw std::invalid_argument(std::string(name) + " must contain [x0,y0,x1,y1]");
     }
     try {
-        return {value.at(0).get<float>(), value.at(1).get<float>(), value.at(2).get<float>(),
-                value.at(3).get<float>()};
+        return {value.at(0).get<float>(), value.at(1).get<float>(), value.at(2).get<float>(), value.at(3).get<float>()};
     } catch (const nlohmann::json::exception &) {
         throw std::invalid_argument(std::string(name) + " coordinates must be numbers");
     }
@@ -774,8 +773,7 @@ class OperationApi::Impl final {
             std::string prompt;
             std::vector<imagecpp_box> positive_boxes;
             std::vector<imagecpp_box> negative_boxes;
-            const imagecpp_detect_options options =
-                detect_options(request, prompt, positive_boxes, negative_boxes);
+            const imagecpp_detect_options options = detect_options(request, prompt, positive_boxes, negative_boxes);
             const std::lock_guard<std::mutex> lock(model_mutex_);
             const imagecpp_model_options load_options = model_options(config_, config_.detect_model_path);
             imagecpp::Model model(runtime_, "image.detect.sam3", load_options);

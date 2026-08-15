@@ -101,8 +101,8 @@ std::string request_image_bytes(const httplib::Request &request) {
 uint32_t parse_uint32(const std::string &value, const char *name, bool allow_zero = false) {
     uint64_t parsed = 0;
     const auto conversion = std::from_chars(value.data(), value.data() + value.size(), parsed);
-    if (conversion.ec != std::errc() || conversion.ptr != value.data() + value.size() ||
-        (!allow_zero && parsed == 0) || parsed > std::numeric_limits<uint32_t>::max()) {
+    if (conversion.ec != std::errc() || conversion.ptr != value.data() + value.size() || (!allow_zero && parsed == 0) ||
+        parsed > std::numeric_limits<uint32_t>::max()) {
         throw std::invalid_argument(std::string("invalid ") + name);
     }
     return static_cast<uint32_t>(parsed);
@@ -293,30 +293,30 @@ class HttpServer::Impl final {
   private:
     void register_routes() {
         server_.Get("/", [](const httplib::Request &, httplib::Response &response) {
-            set_json(response, 200,
-                     {{"name", "image.cpp"},
-                      {"version", imagecpp_version_string()},
-                      {"endpoints",
-                       {"/healthz",      "/v1/operations", "/v1/resize",     "/v1/ocr",
-                        "/v1/depth",     "/v1/embed/image", "/v1/embed/text", "/v1/classify",
-                        "/v1/segment",   "/v1/detect",      "/v1/cutout",     "/v1/remove-background",
-                        "/v1/extract",   "/v1/generate",    "/v1/edit",       "/v1/upscale",
-                        "/v1/caption",   "/v1/ask"}}});
+            set_json(
+                response, 200,
+                {{"name", "image.cpp"},
+                 {"version", imagecpp_version_string()},
+                 {"endpoints",
+                  {"/healthz", "/v1/operations", "/v1/resize", "/v1/ocr", "/v1/depth", "/v1/embed/image",
+                   "/v1/embed/text", "/v1/classify", "/v1/segment", "/v1/detect", "/v1/cutout", "/v1/remove-background",
+                   "/v1/extract", "/v1/generate", "/v1/edit", "/v1/upscale", "/v1/caption", "/v1/ask"}}});
         });
         server_.Get("/healthz", [this](const httplib::Request &, httplib::Response &response) {
-            set_json(response, 200,
-                     {{"status", "ok"},
-                      {"version", imagecpp_version_string()},
-                      {"vlm_loaded", vlm_ != nullptr},
-                      {"configured_models",
-                       {{"segment", !config_.segment_model_path.empty()},
-                        {"detect", !config_.detect_model_path.empty()},
-                        {"depth", !config_.depth_model_path.empty()},
-                        {"clip", !config_.clip_model_path.empty()},
-                        {"ocr", !config_.ocr_model_path.empty()},
-                        {"diffusion", !config_.diffusion_checkpoint_path.empty() || !config_.diffusion_model_path.empty()},
-                        {"upscaler", !config_.upscaler_model_path.empty()},
-                        {"vlm", vlm_ != nullptr}}}});
+            set_json(
+                response, 200,
+                {{"status", "ok"},
+                 {"version", imagecpp_version_string()},
+                 {"vlm_loaded", vlm_ != nullptr},
+                 {"configured_models",
+                  {{"segment", !config_.segment_model_path.empty()},
+                   {"detect", !config_.detect_model_path.empty()},
+                   {"depth", !config_.depth_model_path.empty()},
+                   {"clip", !config_.clip_model_path.empty()},
+                   {"ocr", !config_.ocr_model_path.empty()},
+                   {"diffusion", !config_.diffusion_checkpoint_path.empty() || !config_.diffusion_model_path.empty()},
+                   {"upscaler", !config_.upscaler_model_path.empty()},
+                   {"vlm", vlm_ != nullptr}}}});
         });
         server_.Get("/v1/operations", [this](const httplib::Request &, httplib::Response &response) {
             Json operations = Json::array();
@@ -398,44 +398,43 @@ class HttpServer::Impl final {
             state->query.options.prompt = state->query.prompt.empty() ? nullptr : state->query.prompt.c_str();
             response.set_header("Cache-Control", "no-cache");
             response.set_header("X-Accel-Buffering", "no");
-            response.set_chunked_content_provider(
-                "text/event-stream; charset=utf-8", [state](size_t, httplib::DataSink &sink) {
-                    if (state->started) {
-                        return false;
-                    }
-                    state->started = true;
-                    try {
-                        const std::lock_guard<std::mutex> lock(*state->model_mutex);
-                        imagecpp::TextResult generated = imagecpp::visual_query_stream(
-                            *state->model, *state->image, state->query.options, [&](std::string_view chunk) {
-                                state->pending_utf8.append(chunk.data(), chunk.size());
-                                const size_t prefix_size = valid_utf8_prefix(state->pending_utf8);
-                                if (prefix_size == 0) {
-                                    return sink.is_writable();
-                                }
-                                const std::string event =
-                                    sse_event("delta", {{"delta", state->pending_utf8.substr(0, prefix_size)}});
-                                state->pending_utf8.erase(0, prefix_size);
-                                return sink.write(event.data(), event.size());
-                            });
-                        if (!state->pending_utf8.empty()) {
-                            throw std::runtime_error("VLM stream ended with incomplete UTF-8");
-                        }
-                        const std::string done = sse_event("done", text_result_json(generated.info()));
-                        (void)sink.write(done.data(), done.size());
-                    } catch (const imagecpp::Error &error) {
-                        const std::string event =
-                            sse_event("error", {{"error", {{"code", status_code_name(error.status())},
-                                                            {"message", error.what()}}}});
-                        (void)sink.write(event.data(), event.size());
-                    } catch (const std::exception &error) {
-                        const std::string event =
-                            sse_event("error", {{"error", {{"code", "internal_error"}, {"message", error.what()}}}});
-                        (void)sink.write(event.data(), event.size());
-                    }
-                    sink.done();
+            response.set_chunked_content_provider("text/event-stream; charset=utf-8", [state](size_t,
+                                                                                              httplib::DataSink &sink) {
+                if (state->started) {
                     return false;
-                });
+                }
+                state->started = true;
+                try {
+                    const std::lock_guard<std::mutex> lock(*state->model_mutex);
+                    imagecpp::TextResult generated = imagecpp::visual_query_stream(
+                        *state->model, *state->image, state->query.options, [&](std::string_view chunk) {
+                            state->pending_utf8.append(chunk.data(), chunk.size());
+                            const size_t prefix_size = valid_utf8_prefix(state->pending_utf8);
+                            if (prefix_size == 0) {
+                                return sink.is_writable();
+                            }
+                            const std::string event =
+                                sse_event("delta", {{"delta", state->pending_utf8.substr(0, prefix_size)}});
+                            state->pending_utf8.erase(0, prefix_size);
+                            return sink.write(event.data(), event.size());
+                        });
+                    if (!state->pending_utf8.empty()) {
+                        throw std::runtime_error("VLM stream ended with incomplete UTF-8");
+                    }
+                    const std::string done = sse_event("done", text_result_json(generated.info()));
+                    (void)sink.write(done.data(), done.size());
+                } catch (const imagecpp::Error &error) {
+                    const std::string event = sse_event(
+                        "error", {{"error", {{"code", status_code_name(error.status())}, {"message", error.what()}}}});
+                    (void)sink.write(event.data(), event.size());
+                } catch (const std::exception &error) {
+                    const std::string event =
+                        sse_event("error", {{"error", {{"code", "internal_error"}, {"message", error.what()}}}});
+                    (void)sink.write(event.data(), event.size());
+                }
+                sink.done();
+                return false;
+            });
         } catch (const imagecpp::Error &error) {
             set_error(response, error_status(error), status_code_name(error.status()), error.what());
         } catch (const std::invalid_argument &error) {

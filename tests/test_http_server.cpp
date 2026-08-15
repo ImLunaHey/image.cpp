@@ -46,8 +46,8 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
     const std::string resize_source = "P6\n2 2\n255\n\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
     const httplib::Result resized =
         client.Post("/v1/resize?width=3&height=4&filter=nearest", resize_source, "image/x-portable-pixmap");
-    const httplib::Result oversized = client.Post("/v1/resize?width=100000&height=100000", resize_source,
-                                                   "image/x-portable-pixmap");
+    const httplib::Result oversized =
+        client.Post("/v1/resize?width=100000&height=100000", resize_source, "image/x-portable-pixmap");
     bool passed = health && health->status == 200 && health->body.find("\"status\":\"ok\"") != std::string::npos &&
                   operations && operations->status == 200 &&
                   operations->body.find("\"operations\"") != std::string::npos && missing && missing->status == 404 &&
@@ -74,7 +74,8 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
                  unavailable_generate && unavailable_generate->status == 503 && unavailable_upscale &&
                  unavailable_upscale->status == 503;
     } else {
-        const httplib::Result caption = client.Post("/v1/caption?temperature=0&max_tokens=16", image_bytes, "image/png");
+        const httplib::Result caption =
+            client.Post("/v1/caption?temperature=0&max_tokens=16", image_bytes, "image/png");
         const httplib::UploadFormDataItems question = {
             {"image", image_bytes, "cat.png", "image/png"},
             {"question", "What animal is in the image? Answer with one word.", "", ""},
@@ -127,26 +128,23 @@ bool run_analysis_requests(imagecpp::server::HttpServerConfig config, const std:
     const httplib::Result ocr = client.Post("/v1/ocr?psm=auto&dpi=300", image_bytes, "image/png");
     const httplib::Result depth = client.Post("/v1/depth", image_bytes, "image/png");
     const httplib::Result image_embedding = client.Post("/v1/embed/image", image_bytes, "image/png");
-    const httplib::Result text_embedding =
-        client.Post("/v1/embed/text", "{\"text\":\"a cat\"}", "application/json");
+    const httplib::Result text_embedding = client.Post("/v1/embed/text", "{\"text\":\"a cat\"}", "application/json");
     const httplib::UploadFormDataItems classification_request = {
         {"image", image_bytes, "cat.png", "image/png"},
         {"labels", "[\"cat\",\"dog\",\"car\"]", "", ""},
     };
     const httplib::Result classification = client.Post("/v1/classify", classification_request);
-    const bool passed = health && health->status == 200 &&
-                        health->body.find("\"depth\":true") != std::string::npos &&
-                        health->body.find("\"clip\":true") != std::string::npos &&
-                        health->body.find("\"ocr\":true") != std::string::npos && ocr && ocr->status == 200 &&
-                        ocr->body.find("\"regions\"") != std::string::npos && depth && depth->status == 200 &&
-                        depth->body.find("\"depth\":{") != std::string::npos &&
-                        depth->body.find("\"base64\"") != std::string::npos &&
-                        image_embedding && image_embedding->status == 200 &&
-                        image_embedding->body.find("\"embedding\"") != std::string::npos && text_embedding &&
-                        text_embedding->status == 200 &&
-                        text_embedding->body.find("\"embedding\"") != std::string::npos && classification &&
-                        classification->status == 200 && classification->body.find("\"label\":\"cat\"") !=
-                                                                  std::string::npos;
+    const bool passed =
+        health && health->status == 200 && health->body.find("\"depth\":true") != std::string::npos &&
+        health->body.find("\"clip\":true") != std::string::npos &&
+        health->body.find("\"ocr\":true") != std::string::npos && ocr && ocr->status == 200 &&
+        ocr->body.find("\"regions\"") != std::string::npos && depth && depth->status == 200 &&
+        depth->body.find("\"depth\":{") != std::string::npos && depth->body.find("\"base64\"") != std::string::npos &&
+        image_embedding && image_embedding->status == 200 &&
+        image_embedding->body.find("\"embedding\"") != std::string::npos && text_embedding &&
+        text_embedding->status == 200 && text_embedding->body.find("\"embedding\"") != std::string::npos &&
+        classification && classification->status == 200 &&
+        classification->body.find("\"label\":\"cat\"") != std::string::npos;
     server.stop();
     listener.join();
     if (!passed) {
@@ -186,8 +184,7 @@ bool run_vision_requests(imagecpp::server::HttpServerConfig config, const std::s
     httplib::UploadFormDataItems extract_request = detect_request;
     extract_request.push_back({"response", "json", "", ""});
     const httplib::Result extract = client.Post("/v1/extract", extract_request);
-    const bool passed = segment && segment->status == 200 &&
-                        segment->body.find("\"segments\"") != std::string::npos &&
+    const bool passed = segment && segment->status == 200 && segment->body.find("\"segments\"") != std::string::npos &&
                         segment->body.find("\"base64\"") != std::string::npos && cutout && cutout->status == 200 &&
                         cutout->get_header_value("Content-Type") == "image/png" && cutout->body.size() > 8 && detect &&
                         detect->status == 200 && detect->body.find("\"detections\"") != std::string::npos &&
@@ -215,9 +212,8 @@ bool run_creative_requests(imagecpp::server::HttpServerConfig config, const std:
 
     httplib::Client client("127.0.0.1", port);
     client.set_read_timeout(240);
-    const std::string generation_body =
-        "{\"prompt\":\"a red square on a white background\",\"width\":64,\"height\":64,"
-        "\"steps\":1,\"seed\":1,\"response\":\"image\"}";
+    const std::string generation_body = "{\"prompt\":\"a red square on a white background\",\"width\":64,\"height\":64,"
+                                        "\"steps\":1,\"seed\":1,\"response\":\"image\"}";
     const httplib::Result generated = client.Post("/v1/generate", generation_body, "application/json");
     const httplib::UploadFormDataItems edit_request = {
         {"image", image_bytes, "cat.png", "image/png"},
