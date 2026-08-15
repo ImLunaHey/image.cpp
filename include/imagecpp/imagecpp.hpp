@@ -257,6 +257,11 @@ class Model final {
         check(imagecpp_upscaler_model_load(runtime.get(), &options, &handle_, &error), error);
     }
 
+    Model(const Runtime &runtime, const imagecpp_vlm_model_options &options) {
+        imagecpp_error error{};
+        check(imagecpp_vlm_model_load(runtime.get(), &options, &handle_, &error), error);
+    }
+
     ~Model() { imagecpp_model_destroy(handle_); }
 
     Model(const Model &) = delete;
@@ -278,6 +283,57 @@ class Model final {
   private:
     imagecpp_model *handle_ = nullptr;
 };
+
+struct TextInfo {
+    std::string text;
+    size_t prompt_tokens = 0;
+    size_t generated_tokens = 0;
+    imagecpp_text_finish_reason finish_reason = IMAGECPP_TEXT_FINISH_END_OF_GENERATION;
+};
+
+class TextResult final {
+  public:
+    ~TextResult() { imagecpp_text_result_destroy(handle_); }
+
+    TextResult(const TextResult &) = delete;
+    TextResult &operator=(const TextResult &) = delete;
+    TextResult(TextResult &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    TextResult &operator=(TextResult &&other) noexcept {
+        if (this != &other) {
+            imagecpp_text_result_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    TextInfo info() const {
+        imagecpp_text_info result{};
+        result.struct_size = sizeof(result);
+        imagecpp_error error{};
+        check(imagecpp_text_result_info(handle_, &result, &error), error);
+        return {result.text == nullptr ? "" : result.text, result.prompt_tokens, result.generated_tokens,
+                result.finish_reason};
+    }
+
+  private:
+    explicit TextResult(imagecpp_text_result *handle) noexcept : handle_(handle) {}
+    friend TextResult visual_query(const Model &, const imagecpp_const_image_view &,
+                                   const imagecpp_visual_query_options &);
+    imagecpp_text_result *handle_ = nullptr;
+};
+
+inline TextResult visual_query(const Model &model, const imagecpp_const_image_view &image,
+                               const imagecpp_visual_query_options &options) {
+    imagecpp_text_result *result = nullptr;
+    imagecpp_error error{};
+    check(imagecpp_visual_query(model.get(), &image, &options, &result, &error), error);
+    return TextResult(result);
+}
+
+inline TextResult visual_query(const Model &model, const Image &image, const imagecpp_visual_query_options &options) {
+    return visual_query(model, image.view(), options);
+}
 
 class EmbeddingResult final {
   public:

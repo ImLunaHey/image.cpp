@@ -19,6 +19,7 @@ option(IMAGECPP_WITH_STABLE_DIFFUSION "Build generation, editing, and ESRGAN sup
 option(IMAGECPP_WITH_DEPTH_ANYTHING "Build Depth Anything 2/3 support" ON)
 option(IMAGECPP_WITH_CLIP "Build CLIP embedding and zero-shot classification support" ON)
 option(IMAGECPP_WITH_TESSERACT "Build Tesseract OCR and document layout support" ON)
+option(IMAGECPP_WITH_VLM "Build image captioning and visual question answering support" ON)
 set(IMAGECPP_TEST_SAM_MODEL "" CACHE FILEPATH "Optional SAM/EdgeTAM model used by integration tests")
 set(IMAGECPP_TEST_SAM3_MODEL "" CACHE FILEPATH "Optional full SAM 3 model used by detection integration tests")
 set(IMAGECPP_TEST_DIFFUSION_MODEL "" CACHE FILEPATH "Optional diffusion model used by integration tests")
@@ -202,7 +203,8 @@ if(IMAGECPP_WITH_WEBP)
     target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_WEBP=1)
 endif()
 
-if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING OR IMAGECPP_WITH_CLIP)
+if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING OR IMAGECPP_WITH_CLIP OR
+   IMAGECPP_WITH_VLM)
     set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
@@ -217,7 +219,11 @@ if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_A
     add_compile_definitions(GGML_MAX_NAME=128)
     set(IMAGECPP_SAVED_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
     set(BUILD_SHARED_LIBS OFF)
-    add_subdirectory(external/ggml)
+    if(IMAGECPP_WITH_VLM)
+        add_subdirectory(external/llama/ggml)
+    else()
+        add_subdirectory(external/ggml)
+    endif()
     set(BUILD_SHARED_LIBS ${IMAGECPP_SAVED_BUILD_SHARED_LIBS})
     unset(IMAGECPP_SAVED_BUILD_SHARED_LIBS)
     foreach(ggml_target ggml ggml-base ${GGML_AVAILABLE_BACKENDS})
@@ -225,6 +231,44 @@ if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_A
             set_target_properties(${ggml_target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
         endif()
     endforeach()
+endif()
+
+if(IMAGECPP_WITH_VLM)
+    set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_APP OFF CACHE BOOL "" FORCE)
+    set(LLAMA_BUILD_MTMD ON CACHE BOOL "" FORCE)
+    set(LLAMA_OPENSSL OFF CACHE BOOL "" FORCE)
+    set(LLAMA_SUBPROCESS OFF CACHE BOOL "" FORCE)
+    set(MTMD_VIDEO OFF CACHE BOOL "" FORCE)
+    set(IMAGECPP_SAVED_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
+    set(BUILD_SHARED_LIBS OFF)
+    add_subdirectory(external/llama)
+    set(BUILD_SHARED_LIBS ${IMAGECPP_SAVED_BUILD_SHARED_LIBS})
+    unset(IMAGECPP_SAVED_BUILD_SHARED_LIBS)
+    set_target_properties(llama mtmd PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        C_VISIBILITY_PRESET hidden
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+    )
+    set_target_properties(llama PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/llama/include>"
+    )
+    set_target_properties(mtmd PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES ""
+    )
+    target_compile_definitions(mtmd PRIVATE STB_IMAGE_STATIC STB_IMAGE_WRITE_STATIC)
+    target_sources(imagecpp PRIVATE src/provider/vlm_provider.cpp)
+    target_include_directories(imagecpp PRIVATE
+        external/llama/include
+        external/llama/tools/mtmd
+    )
+    target_link_libraries(imagecpp PRIVATE mtmd llama ggml::ggml)
+    target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_VLM=1)
 endif()
 
 if(IMAGECPP_WITH_CLIP)
@@ -243,7 +287,7 @@ if(IMAGECPP_WITH_CLIP)
     )
 
     target_sources(imagecpp PRIVATE src/provider/clip_provider.cpp)
-    target_include_directories(imagecpp PRIVATE external/clipcpp)
+    target_include_directories(imagecpp BEFORE PRIVATE external/clipcpp)
     target_link_libraries(imagecpp PRIVATE imagecpp_clip_engine ggml::ggml)
     target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_CLIP=1)
 
@@ -433,6 +477,7 @@ if(IMAGECPP_BUILD_TESTS)
         $<$<BOOL:${IMAGECPP_WITH_DEPTH_ANYTHING}>:IMAGECPP_TEST_WITH_DEPTH_ANYTHING=1>
         $<$<BOOL:${IMAGECPP_WITH_CLIP}>:IMAGECPP_TEST_WITH_CLIP=1>
         $<$<BOOL:${IMAGECPP_WITH_TESSERACT}>:IMAGECPP_TEST_WITH_TESSERACT=1>
+        $<$<BOOL:${IMAGECPP_WITH_VLM}>:IMAGECPP_TEST_WITH_VLM=1>
     )
     imagecpp_enable_warnings(imagecpp_tests)
     add_test(NAME imagecpp.unit COMMAND imagecpp_tests)
@@ -658,7 +703,27 @@ if(IMAGECPP_WITH_TESSERACT)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 endif()
-if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING OR IMAGECPP_WITH_CLIP)
+if(IMAGECPP_WITH_VLM)
+    get_target_property(IMAGECPP_LLAMA_PUBLIC_HEADERS llama PUBLIC_HEADER)
+    get_target_property(IMAGECPP_MTMD_PUBLIC_HEADERS mtmd PUBLIC_HEADER)
+    get_target_property(IMAGECPP_MTMD_PRIVATE_HEADERS mtmd PRIVATE_HEADER)
+    set_target_properties(llama mtmd PROPERTIES PUBLIC_HEADER "")
+    set_target_properties(mtmd PROPERTIES PRIVATE_HEADER "")
+    install(TARGETS llama mtmd
+        EXPORT imagecppTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+    set_target_properties(llama PROPERTIES PUBLIC_HEADER "${IMAGECPP_LLAMA_PUBLIC_HEADERS}")
+    set_target_properties(mtmd PROPERTIES PUBLIC_HEADER "${IMAGECPP_MTMD_PUBLIC_HEADERS}")
+    set_target_properties(mtmd PROPERTIES PRIVATE_HEADER "${IMAGECPP_MTMD_PRIVATE_HEADERS}")
+    unset(IMAGECPP_LLAMA_PUBLIC_HEADERS)
+    unset(IMAGECPP_MTMD_PUBLIC_HEADERS)
+    unset(IMAGECPP_MTMD_PRIVATE_HEADERS)
+endif()
+if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING OR IMAGECPP_WITH_CLIP OR
+   IMAGECPP_WITH_VLM)
     set(IMAGECPP_GGML_TARGETS ggml ggml-base)
     foreach(backend IN LISTS GGML_AVAILABLE_BACKENDS)
         if(TARGET ${backend})
@@ -718,8 +783,16 @@ endif()
 if(IMAGECPP_WITH_SAM3)
     install(FILES external/sam3/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME sam3.cpp.txt)
 endif()
-if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING OR IMAGECPP_WITH_CLIP)
-    install(FILES external/ggml/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME ggml.txt)
+if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING OR IMAGECPP_WITH_CLIP OR
+   IMAGECPP_WITH_VLM)
+    if(IMAGECPP_WITH_VLM)
+        install(FILES external/llama/ggml/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME ggml.txt)
+    else()
+        install(FILES external/ggml/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME ggml.txt)
+    endif()
+endif()
+if(IMAGECPP_WITH_VLM)
+    install(FILES external/llama/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME llama.cpp.txt)
 endif()
 if(IMAGECPP_WITH_STABLE_DIFFUSION)
     install(FILES external/stable-diffusion/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME stable-diffusion.cpp.txt)

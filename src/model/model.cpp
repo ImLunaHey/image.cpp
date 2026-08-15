@@ -47,6 +47,10 @@ struct imagecpp_ocr_result {
     imagecpp::detail::OcrOutput output;
 };
 
+struct imagecpp_text_result {
+    imagecpp::detail::TextOutput output;
+};
+
 namespace imagecpp::detail {
 namespace {
 
@@ -82,6 +86,59 @@ const imagecpp_model_options &validate_model_options(const imagecpp_model_option
     return *options;
 }
 #endif
+
+#if defined(IMAGECPP_WITH_VLM)
+const imagecpp_vlm_model_options &validate_vlm_model_options(const imagecpp_vlm_model_options *options) {
+    if (options == nullptr || options->struct_size < sizeof(imagecpp_vlm_model_options)) {
+        throw std::invalid_argument("VLM model options are null or too small");
+    }
+    if (options->model_path == nullptr || options->model_path[0] == '\0') {
+        throw std::invalid_argument("VLM language model path is empty");
+    }
+    if (options->projection_model_path == nullptr || options->projection_model_path[0] == '\0') {
+        throw std::invalid_argument("VLM projection model path is empty");
+    }
+    if (options->threads < 0) {
+        throw std::invalid_argument("VLM thread count cannot be negative");
+    }
+    if (options->device != IMAGECPP_DEVICE_AUTO && options->device != IMAGECPP_DEVICE_CPU &&
+        options->device != IMAGECPP_DEVICE_GPU) {
+        throw std::invalid_argument("unknown VLM device");
+    }
+    if (options->context_size < 512) {
+        throw std::invalid_argument("VLM context size must be at least 512 tokens");
+    }
+    return *options;
+}
+#endif
+
+VisualQueryRequest visual_query_request(const imagecpp_visual_query_options *options) {
+    if (options == nullptr || options->struct_size < sizeof(imagecpp_visual_query_options)) {
+        throw std::invalid_argument("visual query options are null or too small");
+    }
+    if (options->max_tokens == 0) {
+        throw std::invalid_argument("visual query max tokens must be positive");
+    }
+    if (!std::isfinite(options->temperature) || options->temperature < 0.0F) {
+        throw std::invalid_argument("visual query temperature must be finite and non-negative");
+    }
+    if (!std::isfinite(options->top_p) || options->top_p <= 0.0F || options->top_p > 1.0F) {
+        throw std::invalid_argument("visual query top-p must be greater than zero and at most one");
+    }
+    if (options->top_k < 0) {
+        throw std::invalid_argument("visual query top-k cannot be negative");
+    }
+    VisualQueryRequest request;
+    request.prompt = options->prompt == nullptr || options->prompt[0] == '\0'
+                         ? "Describe this image in one concise paragraph."
+                         : options->prompt;
+    request.max_tokens = options->max_tokens;
+    request.temperature = options->temperature;
+    request.top_p = options->top_p;
+    request.top_k = options->top_k;
+    request.seed = options->seed;
+    return request;
+}
 
 OcrRequest ocr_request(const imagecpp_ocr_options *options) {
     if (options == nullptr || options->struct_size < sizeof(imagecpp_ocr_options)) {
@@ -296,6 +353,10 @@ std::vector<ClassificationOutput> Model::classify(const imagecpp_const_image_vie
 OcrOutput Model::ocr(const imagecpp_const_image_view &, const OcrRequest &) {
     throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support OCR");
 }
+
+TextOutput Model::visual_query(const imagecpp_const_image_view &, const VisualQueryRequest &) {
+    throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support visual text generation");
+}
 } // namespace imagecpp::detail
 
 extern "C" {
@@ -327,6 +388,12 @@ void imagecpp_diffusion_model_options_init(imagecpp_diffusion_model_options *opt
 void imagecpp_upscaler_model_options_init(imagecpp_upscaler_model_options *options) {
     if (options != nullptr) {
         *options = {sizeof(imagecpp_upscaler_model_options), nullptr, 0, IMAGECPP_DEVICE_AUTO, 0};
+    }
+}
+
+void imagecpp_vlm_model_options_init(imagecpp_vlm_model_options *options) {
+    if (options != nullptr) {
+        *options = {sizeof(imagecpp_vlm_model_options), nullptr, nullptr, 0, IMAGECPP_DEVICE_AUTO, 4096};
     }
 }
 
@@ -450,6 +517,33 @@ imagecpp_status imagecpp_upscaler_model_load(const imagecpp_runtime *runtime,
     (void)options;
     return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED,
                                 "model-backed upscaling support is not compiled in");
+#endif
+}
+
+imagecpp_status imagecpp_vlm_model_load(const imagecpp_runtime *runtime, const imagecpp_vlm_model_options *options,
+                                        imagecpp_model **output, imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output VLM model pointer is null");
+    }
+    *output = nullptr;
+    if (runtime == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "runtime is null");
+    }
+#if defined(IMAGECPP_WITH_VLM)
+    try {
+        const imagecpp_vlm_model_options &settings = imagecpp::detail::validate_vlm_model_options(options);
+        auto model = std::make_unique<imagecpp_model>();
+        model->implementation = imagecpp::detail::load_vlm_model(settings);
+        *output = model.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected VLM model load failure");
+    }
+#else
+    (void)options;
+    return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED, "VLM support is not compiled in");
 #endif
 }
 
@@ -902,6 +996,56 @@ imagecpp_status imagecpp_ocr_result_region_info(const imagecpp_ocr_result *resul
 }
 
 void imagecpp_ocr_result_destroy(imagecpp_ocr_result *result) { delete result; }
+
+void imagecpp_visual_query_options_init(imagecpp_visual_query_options *options) {
+    if (options != nullptr) {
+        *options = {sizeof(imagecpp_visual_query_options), nullptr, 128, 0.1F, 0.9F, 40, 0};
+    }
+}
+
+imagecpp_status imagecpp_visual_query(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                      const imagecpp_visual_query_options *options, imagecpp_text_result **output,
+                                      imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output text result pointer is null");
+    }
+    *output = nullptr;
+    if (model == nullptr || model->implementation == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "model is null");
+    }
+    imagecpp::detail::ImageLayout layout;
+    const imagecpp_status status = imagecpp::detail::validate_const_view(image, layout, error);
+    if (status != IMAGECPP_STATUS_OK) {
+        return status;
+    }
+    try {
+        const imagecpp::detail::VisualQueryRequest request = imagecpp::detail::visual_query_request(options);
+        auto result = std::make_unique<imagecpp_text_result>();
+        result->output = model->implementation->visual_query(*image, request);
+        if (result->output.text.empty()) {
+            throw imagecpp::detail::Failure(IMAGECPP_STATUS_MODEL_ERROR, "visual query returned no text");
+        }
+        *output = result.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected visual query failure");
+    }
+}
+
+imagecpp_status imagecpp_text_result_info(const imagecpp_text_result *result, imagecpp_text_info *output,
+                                          imagecpp_error *error) {
+    if (result == nullptr || output == nullptr || output->struct_size < sizeof(imagecpp_text_info)) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT,
+                                    "text result or output info is null or too small");
+    }
+    *output = {sizeof(imagecpp_text_info), result->output.text.c_str(), result->output.prompt_tokens,
+               result->output.generated_tokens, result->output.finish_reason};
+    return imagecpp::core::succeed(error);
+}
+
+void imagecpp_text_result_destroy(imagecpp_text_result *result) { delete result; }
 
 imagecpp_status imagecpp_embed_image(const imagecpp_model *model, const imagecpp_const_image_view *image,
                                      imagecpp_embedding_result **output, imagecpp_error *error) {

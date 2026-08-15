@@ -73,6 +73,9 @@ void test_version_and_runtime() {
 #if defined(IMAGECPP_TEST_WITH_TESSERACT)
     expected_count += 1;
 #endif
+#if defined(IMAGECPP_TEST_WITH_VLM)
+    expected_count += 2;
+#endif
 #if defined(IMAGECPP_TEST_WITH_STABLE_DIFFUSION)
     expected_count += 3;
 #endif
@@ -114,6 +117,15 @@ void test_version_and_runtime() {
     require(operations[index].id == "image.ocr.tesseract", "runtime should expose Tesseract OCR");
     require(operations[index].task == IMAGECPP_TASK_OCR, "Tesseract OCR operation task mismatch");
     require(operations[index].output_kind == IMAGECPP_ARTIFACT_TEXT_REGIONS, "Tesseract OCR output kind mismatch");
+    ++index;
+#endif
+#if defined(IMAGECPP_TEST_WITH_VLM)
+    require(operations[index].id == "image.caption.vlm", "runtime should expose VLM captioning");
+    require(operations[index].task == IMAGECPP_TASK_CAPTION, "VLM caption task mismatch");
+    require(operations[index].output_kind == IMAGECPP_ARTIFACT_TEXT, "VLM caption output kind mismatch");
+    ++index;
+    require(operations[index].id == "image.vqa.vlm", "runtime should expose VLM question answering");
+    require(operations[index].task == IMAGECPP_TASK_VQA, "VLM question-answering task mismatch");
     ++index;
 #endif
 #if defined(IMAGECPP_TEST_WITH_STABLE_DIFFUSION)
@@ -184,6 +196,17 @@ void test_model_api_validation() {
     imagecpp_depth_options depth_options{};
     imagecpp_depth_options_init(&depth_options);
     require(depth_options.struct_size == sizeof(depth_options), "depth options initializer is invalid");
+
+    imagecpp_vlm_model_options vlm_model_options{};
+    imagecpp_vlm_model_options_init(&vlm_model_options);
+    require(vlm_model_options.struct_size == sizeof(vlm_model_options) && vlm_model_options.context_size == 4096,
+            "VLM model option defaults are invalid");
+
+    imagecpp_visual_query_options visual_options{};
+    imagecpp_visual_query_options_init(&visual_options);
+    require(visual_options.struct_size == sizeof(visual_options) && visual_options.max_tokens == 128 &&
+                visual_options.temperature == 0.1F && visual_options.top_p == 0.9F && visual_options.top_k == 40,
+            "visual query option defaults are invalid");
 }
 
 void test_layout_validation() {

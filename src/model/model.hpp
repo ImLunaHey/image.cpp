@@ -127,6 +127,22 @@ struct OcrOutput {
     std::vector<TextRegionOutput> regions;
 };
 
+struct VisualQueryRequest {
+    std::string prompt;
+    uint32_t max_tokens = 128;
+    float temperature = 0.1F;
+    float top_p = 0.9F;
+    int32_t top_k = 40;
+    uint32_t seed = 0;
+};
+
+struct TextOutput {
+    std::string text;
+    size_t prompt_tokens = 0;
+    size_t generated_tokens = 0;
+    imagecpp_text_finish_reason finish_reason = IMAGECPP_TEXT_FINISH_END_OF_GENERATION;
+};
+
 class Session {
   public:
     virtual ~Session() = default;
@@ -147,6 +163,7 @@ class Model {
     virtual std::vector<ClassificationOutput> classify(const imagecpp_const_image_view &image,
                                                        const std::vector<std::string> &labels);
     virtual OcrOutput ocr(const imagecpp_const_image_view &image, const OcrRequest &request);
+    virtual TextOutput visual_query(const imagecpp_const_image_view &image, const VisualQueryRequest &request);
 };
 
 #if defined(IMAGECPP_WITH_CLIP)
@@ -166,6 +183,10 @@ std::shared_ptr<Model> load_depth_anything_model(const imagecpp_model_options &o
 #if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
 std::shared_ptr<Model> load_diffusion_model(const imagecpp_diffusion_model_options &options);
 std::shared_ptr<Model> load_upscaler_model(const imagecpp_upscaler_model_options &options);
+#endif
+
+#if defined(IMAGECPP_WITH_VLM)
+std::shared_ptr<Model> load_vlm_model(const imagecpp_vlm_model_options &options);
 #endif
 
 } // namespace imagecpp::detail

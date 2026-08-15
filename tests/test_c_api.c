@@ -23,6 +23,17 @@ int main(void) {
     if (depth_options.struct_size != sizeof(depth_options) || depth_options.include_pose != 0) {
         return 9;
     }
+    imagecpp_vlm_model_options vlm_model_options;
+    imagecpp_vlm_model_options_init(&vlm_model_options);
+    if (vlm_model_options.struct_size != sizeof(vlm_model_options) || vlm_model_options.context_size != 4096) {
+        return 13;
+    }
+    imagecpp_visual_query_options visual_options;
+    imagecpp_visual_query_options_init(&visual_options);
+    if (visual_options.struct_size != sizeof(visual_options) || visual_options.max_tokens != 128 ||
+        visual_options.top_k != 40) {
+        return 14;
+    }
     imagecpp_ocr_options ocr_options;
     imagecpp_ocr_options_init(&ocr_options);
     if (ocr_options.struct_size != sizeof(ocr_options) || ocr_options.page_segmentation != IMAGECPP_OCR_PAGE_AUTO ||

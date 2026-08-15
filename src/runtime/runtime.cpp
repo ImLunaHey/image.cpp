@@ -112,6 +112,24 @@ imagecpp_status imagecpp_runtime_create(imagecpp_runtime **output, imagecpp_erro
             IMAGECPP_ARTIFACT_TEXT_REGIONS,
         });
 #endif
+#if defined(IMAGECPP_WITH_VLM)
+        runtime->operations.push_back({
+            "image.caption.vlm",
+            "Caption with a vision language model",
+            "Generate a natural-language image description with a local multimodal model",
+            IMAGECPP_TASK_CAPTION,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_TEXT,
+        });
+        runtime->operations.push_back({
+            "image.vqa.vlm",
+            "Answer a question about an image",
+            "Answer an arbitrary natural-language question grounded in a local image",
+            IMAGECPP_TASK_VQA,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_TEXT,
+        });
+#endif
 #if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
         runtime->operations.push_back({
             "image.generate.diffusion",

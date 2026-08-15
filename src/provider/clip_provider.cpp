@@ -1,6 +1,6 @@
 #include "model/model.hpp"
 
-#include "clip.h"
+#include "../../external/clipcpp/clip.h"
 
 #include <algorithm>
 #include <cctype>

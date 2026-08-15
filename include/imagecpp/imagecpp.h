@@ -107,7 +107,8 @@ typedef enum imagecpp_artifact_kind {
     IMAGECPP_ARTIFACT_DEPTH_MAP = 4,
     IMAGECPP_ARTIFACT_TEXT_REGIONS = 5,
     IMAGECPP_ARTIFACT_EMBEDDING = 6,
-    IMAGECPP_ARTIFACT_METADATA = 7
+    IMAGECPP_ARTIFACT_METADATA = 7,
+    IMAGECPP_ARTIFACT_TEXT = 8
 } imagecpp_artifact_kind;
 
 typedef enum imagecpp_task {
@@ -125,7 +126,8 @@ typedef enum imagecpp_task {
     IMAGECPP_TASK_EDIT = 11,
     IMAGECPP_TASK_UPSCALE = 12,
     IMAGECPP_TASK_RESTORE = 13,
-    IMAGECPP_TASK_WORKFLOW = 14
+    IMAGECPP_TASK_WORKFLOW = 14,
+    IMAGECPP_TASK_VQA = 15
 } imagecpp_task;
 
 typedef struct imagecpp_const_image_view {
@@ -200,6 +202,38 @@ typedef struct imagecpp_upscaler_model_options {
     imagecpp_device device;
     int32_t tile_size;
 } imagecpp_upscaler_model_options;
+
+typedef struct imagecpp_vlm_model_options {
+    size_t struct_size;
+    const char *model_path;
+    const char *projection_model_path;
+    int32_t threads;
+    imagecpp_device device;
+    uint32_t context_size;
+} imagecpp_vlm_model_options;
+
+typedef enum imagecpp_text_finish_reason {
+    IMAGECPP_TEXT_FINISH_END_OF_GENERATION = 0,
+    IMAGECPP_TEXT_FINISH_LENGTH = 1
+} imagecpp_text_finish_reason;
+
+typedef struct imagecpp_visual_query_options {
+    size_t struct_size;
+    const char *prompt;
+    uint32_t max_tokens;
+    float temperature;
+    float top_p;
+    int32_t top_k;
+    uint32_t seed;
+} imagecpp_visual_query_options;
+
+typedef struct imagecpp_text_info {
+    size_t struct_size;
+    const char *text;
+    size_t prompt_tokens;
+    size_t generated_tokens;
+    imagecpp_text_finish_reason finish_reason;
+} imagecpp_text_info;
 
 typedef struct imagecpp_generate_options {
     size_t struct_size;
@@ -456,6 +490,7 @@ typedef struct imagecpp_cutout_result imagecpp_cutout_result;
 typedef struct imagecpp_detection_result imagecpp_detection_result;
 typedef struct imagecpp_grounded_cutout_result imagecpp_grounded_cutout_result;
 typedef struct imagecpp_ocr_result imagecpp_ocr_result;
+typedef struct imagecpp_text_result imagecpp_text_result;
 
 IMAGECPP_API uint32_t imagecpp_version(void);
 IMAGECPP_API const char *imagecpp_version_string(void);
@@ -498,6 +533,7 @@ IMAGECPP_API void imagecpp_blob_destroy(imagecpp_blob *blob);
 IMAGECPP_API void imagecpp_model_options_init(imagecpp_model_options *options);
 IMAGECPP_API void imagecpp_diffusion_model_options_init(imagecpp_diffusion_model_options *options);
 IMAGECPP_API void imagecpp_upscaler_model_options_init(imagecpp_upscaler_model_options *options);
+IMAGECPP_API void imagecpp_vlm_model_options_init(imagecpp_vlm_model_options *options);
 IMAGECPP_API imagecpp_status imagecpp_model_load(const imagecpp_runtime *runtime, const char *operation_id,
                                                  const imagecpp_model_options *options, imagecpp_model **output,
                                                  imagecpp_error *error);
@@ -507,6 +543,9 @@ IMAGECPP_API imagecpp_status imagecpp_diffusion_model_load(const imagecpp_runtim
 IMAGECPP_API imagecpp_status imagecpp_upscaler_model_load(const imagecpp_runtime *runtime,
                                                           const imagecpp_upscaler_model_options *options,
                                                           imagecpp_model **output, imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_vlm_model_load(const imagecpp_runtime *runtime,
+                                                     const imagecpp_vlm_model_options *options, imagecpp_model **output,
+                                                     imagecpp_error *error);
 IMAGECPP_API void imagecpp_model_destroy(imagecpp_model *model);
 IMAGECPP_API imagecpp_status imagecpp_session_create(const imagecpp_model *model, imagecpp_session **output,
                                                      imagecpp_error *error);
@@ -578,6 +617,14 @@ IMAGECPP_API size_t imagecpp_ocr_result_region_count(const imagecpp_ocr_result *
 IMAGECPP_API imagecpp_status imagecpp_ocr_result_region_info(const imagecpp_ocr_result *result, size_t index,
                                                              imagecpp_text_region_info *output, imagecpp_error *error);
 IMAGECPP_API void imagecpp_ocr_result_destroy(imagecpp_ocr_result *result);
+
+IMAGECPP_API void imagecpp_visual_query_options_init(imagecpp_visual_query_options *options);
+IMAGECPP_API imagecpp_status imagecpp_visual_query(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                                   const imagecpp_visual_query_options *options,
+                                                   imagecpp_text_result **output, imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_text_result_info(const imagecpp_text_result *result, imagecpp_text_info *output,
+                                                       imagecpp_error *error);
+IMAGECPP_API void imagecpp_text_result_destroy(imagecpp_text_result *result);
 
 IMAGECPP_API imagecpp_status imagecpp_embed_image(const imagecpp_model *model, const imagecpp_const_image_view *image,
                                                   imagecpp_embedding_result **output, imagecpp_error *error);
