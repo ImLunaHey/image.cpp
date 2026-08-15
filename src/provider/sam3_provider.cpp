@@ -198,12 +198,24 @@ class SamModel final : public Model {
         if (options.device == IMAGECPP_DEVICE_GPU) {
             throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this SAM provider build has no GPU backend");
         }
+#elif defined(IMAGECPP_WITH_VLM)
+        if (options.device == IMAGECPP_DEVICE_GPU) {
+            throw Failure(IMAGECPP_STATUS_UNSUPPORTED,
+                          "SAM Metal execution is unavailable in the VLM composite; use auto or CPU");
+        }
 #endif
         parameters_.model_path = options.model_path;
         parameters_.n_threads = options.threads == 0
                                     ? static_cast<int>(std::max(1U, std::thread::hardware_concurrency()))
                                     : options.threads;
+#if defined(GGML_USE_METAL) && defined(IMAGECPP_WITH_VLM)
+        // llama.cpp's current Metal backend does not implement every SAM graph
+        // operation. Keep the combined runtime functional until those kernels
+        // converge upstream instead of allowing the backend to abort in-process.
+        parameters_.use_gpu = false;
+#else
         parameters_.use_gpu = options.device != IMAGECPP_DEVICE_CPU;
+#endif
         model_ = sam3_load_model(parameters_);
         if (model_ == nullptr) {
             throw Failure(IMAGECPP_STATUS_MODEL_ERROR, "failed to load SAM model; check its path and format");

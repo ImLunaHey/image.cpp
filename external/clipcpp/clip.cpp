@@ -23,6 +23,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+namespace imagecpp_clip {
+
 // #define CLIP_DEBUG
 
 static std::string format(const char * fmt, ...) {
@@ -1776,7 +1778,10 @@ bool clip_model_quantize(const char * fname_inp, const char * fname_out, const i
 
     return true;
 }
+
 #endif
 
 struct clip_text_hparams * clip_get_text_hparams(struct clip_ctx * ctx) { return &ctx->text_model.hparams; }
 struct clip_vision_hparams * clip_get_vision_hparams(struct clip_ctx * ctx) { return &ctx->vision_model.hparams; }
+
+} // namespace imagecpp_clip

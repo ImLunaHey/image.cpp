@@ -18,6 +18,8 @@
 namespace imagecpp::detail {
 namespace {
 
+using namespace imagecpp_clip;
+
 struct ClipContextDeleter {
     void operator()(clip_ctx *context) const noexcept {
         if (context != nullptr) {

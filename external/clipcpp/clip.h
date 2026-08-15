@@ -7,6 +7,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+namespace imagecpp_clip {
+#endif
+
 struct clip_ctx;
 
 #ifdef __cplusplus
@@ -112,6 +116,7 @@ bool clip_model_quantize(const char * fname_inp, const char * fname_out, const i
 
 #ifdef __cplusplus
 }
+} // namespace imagecpp_clip
 #endif
 
 #endif // CLIP_H
