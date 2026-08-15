@@ -149,6 +149,7 @@ if(IMAGECPP_WITH_TESSERACT)
         VISIBILITY_INLINES_HIDDEN YES
     )
     target_compile_definitions(libtesseract PRIVATE TESSERACT_DISABLE_DEBUG_FONTS=1)
+    target_compile_definitions(leptonica PRIVATE MINIMUM_SEVERITY=5)
     set_target_properties(tesseract PROPERTIES EXCLUDE_FROM_ALL YES)
     target_sources(imagecpp PRIVATE src/provider/tesseract_provider.cpp)
     target_include_directories(imagecpp PRIVATE
@@ -403,6 +404,7 @@ if(IMAGECPP_BUILD_CLI)
         app/detect_command.cpp
         app/main.cpp
         app/model_commands.cpp
+        app/ocr_command.cpp
     )
     target_compile_features(imagecpp_cli PRIVATE cxx_std_17)
     target_link_libraries(imagecpp_cli PRIVATE imagecpp::imagecpp)
@@ -453,6 +455,33 @@ if(IMAGECPP_BUILD_TESTS)
                 5x3
                 bilinear
         )
+        if(IMAGECPP_WITH_TESSERACT AND IMAGECPP_TEST_OCR_MODEL)
+            add_test(
+                NAME imagecpp.cli.ocr-model
+                COMMAND imagecpp_cli ocr
+                    "${IMAGECPP_TEST_OCR_MODEL}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-ocr-fixture.png"
+                    --psm line
+            )
+            set_tests_properties(imagecpp.cli.ocr-model PROPERTIES
+                DEPENDS imagecpp.c-api.ocr-model
+                PASS_REGULAR_EXPRESSION "HELL"
+                TIMEOUT 30
+            )
+            add_test(
+                NAME imagecpp.cli.ocr-json-model
+                COMMAND imagecpp_cli ocr
+                    "${IMAGECPP_TEST_OCR_MODEL}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-ocr-fixture.png"
+                    --psm line
+                    --json
+            )
+            set_tests_properties(imagecpp.cli.ocr-json-model PROPERTIES
+                DEPENDS imagecpp.c-api.ocr-model
+                PASS_REGULAR_EXPRESSION "\"regions\":\\["
+                TIMEOUT 30
+            )
+        endif()
         if(IMAGECPP_WITH_SAM3 AND IMAGECPP_TEST_SAM_MODEL)
             add_test(
                 NAME imagecpp.cli.segment-model
