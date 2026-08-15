@@ -22,3 +22,6 @@
 [submodule "external/leptonica"]
 	path = external/leptonica
 	url = https://github.com/DanBloomberg/leptonica.git
+[submodule "external/llama"]
+	path = external/llama
+	url = https://github.com/ggml-org/llama.cpp.git
