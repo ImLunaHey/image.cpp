@@ -19,10 +19,26 @@ constexpr char kHtml[] = R"IMAGECPP_HTML(<!doctype html>
       <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
       <span>image.cpp</span><em>studio</em>
     </a>
-    <div class="server-state" id="server-state" role="status">
-      <span class="state-dot"></span><span id="server-label">Connecting</span>
+    <div class="top-actions">
+      <button class="jobs-button" id="jobs-button" type="button"><span>Jobs</span><b id="job-count">0</b></button>
+      <div class="server-state" id="server-state" role="status">
+        <span class="state-dot"></span><span id="server-label">Connecting</span>
+      </div>
     </div>
   </header>
+
+  <div class="drawer-shell" id="drawer-shell" hidden>
+    <button class="drawer-backdrop" id="drawer-backdrop" type="button" aria-label="Close jobs"></button>
+    <aside class="job-drawer" aria-label="Background jobs">
+      <div class="drawer-head"><div><span>Runtime</span><h2>Jobs & models</h2></div><button class="icon-button" id="close-jobs" type="button" aria-label="Close jobs">×</button></div>
+      <div class="runtime-card">
+        <div><span>Model cache</span><strong id="cache-summary">Connecting</strong></div>
+        <button class="quiet-button" id="clear-cache" type="button">Release</button>
+      </div>
+      <div class="job-list-head"><span>Recent jobs</span><button class="quiet-button" id="refresh-jobs" type="button">Refresh</button></div>
+      <div class="job-list" id="job-list"><p>No background jobs yet.</p></div>
+    </aside>
+  </div>
 
   <main class="shell">
     <aside class="toolbox" aria-label="Image operations">
@@ -105,12 +121,21 @@ constexpr char kHtml[] = R"IMAGECPP_HTML(<!doctype html>
           <div><span>Parameters</span><small id="endpoint-label">POST /v1/resize</small></div>
           <button class="quiet-button" id="reset-form" type="button">Reset</button>
         </div>
+        <div class="preset-bar">
+          <select id="preset-select" aria-label="Saved presets"><option value="">Saved presets</option></select>
+          <button class="quiet-button" id="save-preset" type="button">Save</button>
+          <button class="quiet-button" id="delete-preset" type="button" disabled>Delete</button>
+        </div>
         <div id="dynamic-fields"></div>
         <div class="mask-field" id="mask-field" hidden>
           <label>Optional mask</label>
           <input id="mask-input" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/x-tga,.tga">
         </div>
         <div class="form-message" id="form-message" hidden></div>
+        <div class="job-mode">
+          <div><label for="background-run">Run in background</label><small>Queue it and keep using the studio</small></div>
+          <input id="background-run" type="checkbox">
+        </div>
         <button class="run-button" id="run-button" type="submit">
           <span id="run-label">Run resize</span><span aria-hidden="true">→</span>
         </button>
@@ -185,6 +210,37 @@ button { color: inherit; }
 .state-dot { width: 7px; height: 7px; border-radius: 50%; background: #d6a63f; box-shadow: 0 0 0 3px rgba(214,166,63,.12); }
 .server-state.ready .state-dot { background: var(--acid); box-shadow: 0 0 0 3px rgba(201,255,67,.12); }
 .server-state.error .state-dot { background: var(--danger); box-shadow: 0 0 0 3px rgba(255,118,109,.12); }
+.top-actions { display: flex; align-items: center; gap: 14px; }
+.jobs-button { display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; color: var(--muted); background: var(--panel); cursor: pointer; font-size: 11px; }
+.jobs-button:hover { color: var(--ink); border-color: #434a44; }
+.jobs-button b { min-width: 18px; padding: 2px 5px; border-radius: 99px; color: var(--acid-ink); background: var(--acid); font: 9px var(--mono); text-align: center; }
+
+.drawer-shell { position: fixed; inset: 0; z-index: 50; }
+.drawer-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(2, 3, 2, .62); backdrop-filter: blur(3px); cursor: default; }
+.job-drawer { position: absolute; top: 0; right: 0; width: min(430px, 94vw); height: 100%; overflow: auto; padding: 24px; border-left: 1px solid var(--line); background: #0e110f; box-shadow: -24px 0 70px rgba(0,0,0,.42); }
+.drawer-head { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.drawer-head span, .job-list-head span { color: var(--acid); font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.drawer-head h2 { margin: 5px 0 0; font-size: 22px; letter-spacing: -.035em; }
+.runtime-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 18px 0 25px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.runtime-card div { display: flex; flex-direction: column; gap: 5px; }
+.runtime-card span { color: var(--dim); font: 9px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+.runtime-card strong { color: #c8cec8; font-size: 11px; font-weight: 550; }
+.job-list-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.job-list { display: grid; gap: 9px; }
+.job-list > p { margin: 28px 0; color: var(--dim); text-align: center; font-size: 11px; }
+.job-item { padding: 13px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--panel); }
+.job-item-top, .job-item-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.job-item-title { min-width: 0; }
+.job-item-title strong { display: block; overflow: hidden; text-overflow: ellipsis; color: #d2d8d1; font-size: 12px; font-weight: 620; text-transform: capitalize; }
+.job-item-title span, .job-time { color: var(--dim); font: 9px var(--mono); }
+.job-status { flex: none; padding: 4px 7px; border-radius: 99px; color: var(--muted); background: #242925; font: 8px var(--mono); text-transform: uppercase; letter-spacing: .05em; }
+.job-status.completed { color: var(--acid-ink); background: var(--acid); }
+.job-status.failed, .job-status.cancelled { color: #ffb0aa; background: rgba(255,118,109,.12); }
+.job-progress { height: 3px; margin: 12px 0 9px; overflow: hidden; border-radius: 99px; background: #292e2a; }
+.job-progress i { display: block; height: 100%; border-radius: inherit; background: var(--acid); transition: width .25s ease; }
+.job-item-bottom span { overflow: hidden; color: var(--dim); font: 9px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.job-actions { display: flex; flex: none; gap: 4px; }
+.job-actions button { padding: 4px 6px; }
 
 .shell { min-height: calc(100vh - 110px); display: grid; grid-template-columns: 224px minmax(420px, 1fr) 326px; }
 .toolbox, .controls { background: rgba(17, 20, 18, .74); }
@@ -283,6 +339,9 @@ h1 { margin: 0; font-size: clamp(27px, 3vw, 38px); line-height: 1; letter-spacin
 .controls-head { padding: 0 0 15px; border-bottom: 1px solid var(--line); }
 .controls-head > div { display: flex; flex-direction: column; gap: 5px; }
 .controls-head small { color: var(--dim); font: 9px var(--mono); letter-spacing: 0; text-transform: none; }
+.preset-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 5px; margin-top: 13px; }
+.preset-bar select { min-width: 0; border: 1px solid var(--line); border-radius: 7px; outline: 0; padding: 6px 8px; color: var(--muted); background: #0c0f0d; font-size: 10px; }
+.preset-bar button:disabled { opacity: .35; cursor: not-allowed; }
 .field { margin-top: 17px; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .field label, .mask-field label { display: flex; justify-content: space-between; margin-bottom: 7px; color: #aeb5ae; font-size: 11px; font-weight: 560; }
@@ -303,6 +362,14 @@ h1 { margin: 0; font-size: clamp(27px, 3vw, 38px); line-height: 1; letter-spacin
 .mask-field { margin-top: 17px; }
 .mask-field input { color: var(--muted); font: 10px var(--mono); }
 .form-message { margin-top: 17px; padding: 10px; border: 1px solid rgba(255,118,109,.22); border-radius: 8px; color: #ffaaa4; background: rgba(255,118,109,.05); font-size: 11px; line-height: 1.45; }
+.job-mode { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 19px; padding: 10px; border: 1px solid var(--line-soft); border-radius: 8px; }
+.job-mode div { display: flex; flex-direction: column; gap: 3px; }
+.job-mode label { color: #aeb5ae; font-size: 11px; font-weight: 560; }
+.job-mode small { color: var(--dim); font: 9px var(--mono); }
+.job-mode input { flex: none; appearance: none; width: 32px; height: 18px; padding: 2px; border-radius: 99px; background: #343a35; cursor: pointer; transition: .15s; }
+.job-mode input::after { content: ''; display: block; width: 14px; height: 14px; border-radius: 50%; background: #939b94; transition: .15s; }
+.job-mode input:checked { background: var(--acid); }
+.job-mode input:checked::after { background: var(--acid-ink); transform: translateX(14px); }
 .run-button { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 22px; border: 0; border-radius: 9px; padding: 12px 14px; color: var(--acid-ink); background: var(--acid); cursor: pointer; font-size: 12px; font-weight: 720; transition: transform .12s, filter .12s; }
 .run-button:hover { filter: brightness(1.06); transform: translateY(-1px); }
 .run-button:active { transform: translateY(0); }
@@ -331,6 +398,7 @@ footer { min-height: 44px; display: flex; justify-content: space-between; align-
   .topbar { height: 58px; padding: 0 15px; }
   .brand em { display: none; }
   .server-state { font-size: 9px; }
+  .jobs-button span { display: none; }
   .workspace-head { display: block; }
   .model-badge { display: inline-block; margin-top: 13px; }
   .stage { min-height: 430px; }
@@ -396,7 +464,10 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
   ];
 
   const $ = id => document.getElementById(id);
-  const state = { operation: operations[0], image: null, imageUrl: '', outputUrl: '', result: null, points: [], health: null, started: 0, timer: 0 };
+  const state = {
+    operation: operations[0], image: null, imageUrl: '', outputUrl: '', result: null, points: [], health: null,
+    started: 0, timer: 0, jobs: new Map(), autoShowJobs: new Set(), presets: [], pollingJobs: false
+  };
   const el = {
     nav: $('operation-nav'), title: $('operation-title'), group: $('operation-group'), description: $('operation-description'),
     badge: $('model-badge'), endpoint: $('endpoint-label'), fields: $('dynamic-fields'), form: $('operation-form'), message: $('form-message'),
@@ -405,7 +476,9 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
     pointLayer: $('point-layer'), canvasHint: $('canvas-hint'), fileName: $('file-name'), imageSize: $('image-size'), overlay: $('working-overlay'),
     workingTitle: $('working-title'), workingTime: $('working-time'), results: $('results'), gallery: $('result-gallery'), text: $('text-result'),
     json: $('json-result'), jsonDetails: $('json-details'), summary: $('result-summary'), download: $('download-result'), copy: $('copy-result'),
-    server: $('server-state'), serverLabel: $('server-label'), version: $('version-label')
+    server: $('server-state'), serverLabel: $('server-label'), version: $('version-label'), background: $('background-run'),
+    jobsButton: $('jobs-button'), jobCount: $('job-count'), drawer: $('drawer-shell'), jobList: $('job-list'),
+    cacheSummary: $('cache-summary'), presetSelect: $('preset-select'), deletePreset: $('delete-preset')
   };
 
   const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
@@ -435,13 +508,16 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
     el.endpoint.textContent = `POST ${next.endpoint}`;
     el.runLabel.textContent = `Run ${next.title.toLowerCase()}`;
     const available = isAvailable(next);
-    el.badge.textContent = next.model ? `${next.model.toUpperCase()} · ${available ? 'ready' : 'not configured'}` : 'No model needed';
+    const warm = next.model === 'vlm' || state.health?.model_cache?.loaded_families?.includes(next.model);
+    el.badge.textContent = next.model ? `${next.model.toUpperCase()} · ${available ? (warm ? 'warm' : 'ready') : 'not configured'}` : 'No model needed';
     el.badge.classList.toggle('unavailable', !available);
     el.run.disabled = !available;
     el.message.hidden = available;
     if (!available) el.message.textContent = `Start the server with a ${next.model} model to use this operation.`;
     el.maskField.hidden = !next.mask;
     renderFields();
+    syncBackgroundMode();
+    renderPresets();
     updateStage();
   }
 
@@ -565,11 +641,16 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
       showMessage('Click the subject in the image or enter a point or box prompt.');
       return;
     }
+    const background = el.background.checked;
+    if (background && values.stream === 'true') values.stream = 'false';
     showMessage('');
-    setWorking(true);
-    clearResult();
+    if (!background) {
+      setWorking(true);
+      clearResult();
+    }
     try {
       const options = { method: 'POST', headers: {} };
+      if (background) options.headers.Prefer = 'respond-async';
       if (operation.id === 'generate' || operation.id === 'embed-text') {
         if (operation.id === 'generate') values.response = 'image';
         options.headers['Content-Type'] = 'application/json';
@@ -585,15 +666,28 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
       }
       const response = await fetch(operation.endpoint, options);
       if (!response.ok) throw await responseError(response);
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.startsWith('text/event-stream')) await consumeStream(response);
-      else if (contentType.startsWith('image/')) showImageBlob(await response.blob(), contentType);
-      else showJson(await response.json());
+      if (background) {
+        const job = await response.json();
+        state.jobs.set(job.id, job);
+        state.autoShowJobs.add(job.id);
+        renderJobs();
+        openJobs();
+        refreshJobs();
+      } else {
+        await consumeResponse(response);
+      }
     } catch (error) {
       showMessage(error.message || String(error));
     } finally {
-      setWorking(false);
+      if (!background) setWorking(false);
     }
+  }
+
+  async function consumeResponse(response) {
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.startsWith('text/event-stream')) await consumeStream(response);
+    else if (contentType.startsWith('image/')) showImageBlob(await response.blob(), contentType);
+    else showJson(await response.json());
   }
 
   async function responseError(response) {
@@ -717,6 +811,193 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
     }
   }
 
+  function openJobs() {
+    el.drawer.hidden = false;
+    refreshJobs();
+  }
+
+  function closeJobs() {
+    el.drawer.hidden = true;
+  }
+
+  function renderJobs() {
+    const jobs = [...state.jobs.values()].sort((left, right) => right.created_at_ms - left.created_at_ms);
+    el.jobCount.textContent = jobs.length > 99 ? '99+' : String(jobs.length);
+    if (!jobs.length) {
+      el.jobList.innerHTML = '<p>No background jobs yet.</p>';
+      return;
+    }
+    el.jobList.innerHTML = jobs.map(job => {
+      const operation = operations.find(item => item.id === job.operation);
+      const active = job.status === 'queued' || job.status === 'running';
+      const progress = Math.max(0, Math.min(100, Math.round(Number(job.progress || 0) * 100)));
+      const stage = job.queue_position ? `queue position ${job.queue_position}` : (job.stage || job.status);
+      const action = active
+        ? `<button class="quiet-button" type="button" data-cancel-job="${escapeHtml(job.id)}">Cancel</button>`
+        : job.status === 'completed' || job.status === 'failed'
+          ? `<button class="quiet-button" type="button" data-view-job="${escapeHtml(job.id)}">${job.status === 'failed' ? 'Error' : 'View'}</button>`
+          : '';
+      return `<article class="job-item">
+        <div class="job-item-top"><div class="job-item-title"><strong>${escapeHtml(operation?.title || job.operation)}</strong><span>${escapeHtml(job.id)}</span></div><i class="job-status ${escapeHtml(job.status)}">${escapeHtml(job.status)}</i></div>
+        <div class="job-progress"><i style="width:${progress}%"></i></div>
+        <div class="job-item-bottom"><span>${escapeHtml(stage)} · ${progress}% · ${timeAgo(job.created_at_ms)}</span><div class="job-actions">${action}</div></div>
+      </article>`;
+    }).join('');
+  }
+
+  async function refreshJobs() {
+    if (state.pollingJobs) return;
+    state.pollingJobs = true;
+    try {
+      const response = await fetch('/v1/jobs?limit=50');
+      if (!response.ok) throw await responseError(response);
+      const data = await response.json();
+      state.jobs = new Map((data.jobs || []).map(job => [job.id, job]));
+      renderJobs();
+      for (const id of [...state.autoShowJobs]) {
+        const job = state.jobs.get(id);
+        if (!job) continue;
+        if (job.status === 'completed' && job.operation === state.operation.id) {
+          state.autoShowJobs.delete(id);
+          loadJobResult(job);
+          break;
+        }
+        if (job.status === 'failed' || job.status === 'cancelled') state.autoShowJobs.delete(id);
+      }
+    } catch (_) {
+      // The server indicator owns connectivity errors; retain the last known job list.
+    } finally {
+      state.pollingJobs = false;
+    }
+  }
+
+  async function loadJobResult(job) {
+    try {
+      const operation = operations.find(item => item.id === job.operation);
+      if (operation) selectOperation(operation.id);
+      const response = await fetch(job.result_url || `/v1/jobs/${job.id}/result`);
+      if (!response.ok) throw await responseError(response);
+      await consumeResponse(response);
+      closeJobs();
+    } catch (error) {
+      showMessage(error.message || String(error));
+    }
+  }
+
+  async function cancelJob(job) {
+    try {
+      const response = await fetch(job.status_url || `/v1/jobs/${job.id}`, { method: 'DELETE' });
+      if (!response.ok) throw await responseError(response);
+      state.jobs.set(job.id, await response.json());
+      state.autoShowJobs.delete(job.id);
+      renderJobs();
+      refreshJobs();
+    } catch (error) {
+      showMessage(error.message || String(error));
+    }
+  }
+
+  function updateRuntime() {
+    const cache = state.health?.model_cache;
+    if (!cache) {
+      el.cacheSummary.textContent = 'Unavailable';
+      return;
+    }
+    const families = cache.loaded_families || [];
+    const capacity = Number(cache.capacity || 0);
+    el.cacheSummary.textContent = capacity === 0
+      ? `Disabled · ${cache.misses || 0} loads`
+      : `${families.length}/${capacity} warm · ${cache.hits || 0} hits${families.length ? ` · ${families.join(', ')}` : ''}`;
+  }
+
+  async function clearModelCache() {
+    const button = $('clear-cache');
+    button.disabled = true;
+    try {
+      const response = await fetch('/v1/models/cache', { method: 'DELETE' });
+      if (!response.ok) throw await responseError(response);
+      const data = await response.json();
+      if (state.health) state.health.model_cache = data.cache;
+      updateRuntime();
+      selectOperation(state.operation.id);
+    } catch (error) {
+      showMessage(error.message || String(error));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function loadPresets() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem('imagecpp.presets.v1') || '[]');
+      state.presets = Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      state.presets = [];
+    }
+  }
+
+  function storePresets() {
+    try { localStorage.setItem('imagecpp.presets.v1', JSON.stringify(state.presets)); } catch (_) { /* Storage is optional. */ }
+  }
+
+  function renderPresets(selected = '') {
+    const presets = state.presets.filter(preset => preset.operation === state.operation.id);
+    el.presetSelect.innerHTML = `<option value="">Saved presets</option>${presets.map(preset => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.name)}</option>`).join('')}`;
+    if (selected && presets.some(preset => preset.id === selected)) el.presetSelect.value = selected;
+    el.deletePreset.disabled = !el.presetSelect.value;
+  }
+
+  function applyPreset(id) {
+    const preset = state.presets.find(item => item.id === id);
+    if (!preset) return;
+    if (preset.operation !== state.operation.id) selectOperation(preset.operation);
+    for (const [name, value] of Object.entries(preset.values || {})) {
+      const input = $(`field-${name}`);
+      if (!input) continue;
+      if (input.type === 'checkbox') input.checked = String(value) === 'true';
+      else input.value = value;
+    }
+    const points = preset.values?.points;
+    if (points) {
+      try { state.points = JSON.parse(points); renderPoints(); } catch (_) { state.points = []; }
+    }
+    el.background.checked = Boolean(preset.background);
+    syncBackgroundMode();
+    renderPresets(id);
+  }
+
+  function savePreset() {
+    const name = window.prompt('Name this preset');
+    if (!name?.trim()) return;
+    const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    state.presets.push({ id, name: name.trim(), operation: state.operation.id, values: formValues(), background: el.background.checked });
+    storePresets();
+    renderPresets(id);
+  }
+
+  function deletePreset() {
+    const id = el.presetSelect.value;
+    if (!id) return;
+    state.presets = state.presets.filter(preset => preset.id !== id);
+    storePresets();
+    renderPresets();
+  }
+
+  function syncBackgroundMode() {
+    const stream = $('field-stream');
+    if (!stream) return;
+    if (el.background.checked) stream.checked = false;
+    stream.disabled = el.background.checked;
+  }
+
+  function timeAgo(timestamp) {
+    const seconds = Math.max(0, Math.round((Date.now() - Number(timestamp || Date.now())) / 1000));
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    return `${Math.round(minutes / 60)}h ago`;
+  }
+
   async function refreshHealth() {
     el.server.className = 'server-state';
     el.serverLabel.textContent = 'Connecting';
@@ -728,6 +1009,7 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
       const count = Object.values(state.health.configured_models || {}).filter(Boolean).length;
       el.serverLabel.textContent = `Ready · ${count} models`;
       el.version.textContent = `image.cpp ${state.health.version || ''}`;
+      updateRuntime();
       renderNav();
       selectOperation(state.operation.id);
     } catch (_) {
@@ -757,7 +1039,25 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
   el.imageInput.addEventListener('change', () => setImage(el.imageInput.files[0]));
   el.form.addEventListener('submit', runOperation);
   $('reset-form').addEventListener('click', () => selectOperation(state.operation.id));
-  $('refresh-health').addEventListener('click', refreshHealth);
+  $('refresh-health').addEventListener('click', () => refreshHealth());
+  el.jobsButton.addEventListener('click', openJobs);
+  $('close-jobs').addEventListener('click', closeJobs);
+  $('drawer-backdrop').addEventListener('click', closeJobs);
+  $('refresh-jobs').addEventListener('click', refreshJobs);
+  $('clear-cache').addEventListener('click', clearModelCache);
+  el.jobList.addEventListener('click', event => {
+    const cancel = event.target.closest('[data-cancel-job]');
+    const view = event.target.closest('[data-view-job]');
+    if (cancel) cancelJob(state.jobs.get(cancel.dataset.cancelJob));
+    if (view) loadJobResult(state.jobs.get(view.dataset.viewJob));
+  });
+  el.background.addEventListener('change', syncBackgroundMode);
+  el.presetSelect.addEventListener('change', () => {
+    el.deletePreset.disabled = !el.presetSelect.value;
+    if (el.presetSelect.value) applyPreset(el.presetSelect.value);
+  });
+  $('save-preset').addEventListener('click', savePreset);
+  $('delete-preset').addEventListener('click', deletePreset);
   el.canvas.addEventListener('click', addPoint);
   window.addEventListener('resize', positionPointLayer);
   document.querySelector('.view-toggle').addEventListener('click', event => { if (event.target.dataset.view) setView(event.target.dataset.view); });
@@ -765,16 +1065,21 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
   el.copy.addEventListener('click', async () => { if (state.result?.kind === 'json') { await navigator.clipboard.writeText(JSON.stringify(state.result.data, null, 2)); el.copy.textContent = 'Copied'; window.setTimeout(() => { el.copy.textContent = 'Copy JSON'; }, 1200); } });
   document.addEventListener('keydown', event => {
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') runOperation(event);
-    if (event.key === 'Escape') clearResult();
+    if (event.key === 'Escape') {
+      if (!el.drawer.hidden) closeJobs(); else clearResult();
+    }
   });
   document.addEventListener('paste', event => { const file = [...(event.clipboardData?.files || [])].find(item => item.type.startsWith('image/')); if (file) setImage(file); });
   for (const eventName of ['dragenter', 'dragover']) $('stage').addEventListener(eventName, event => { event.preventDefault(); $('stage').classList.add('dragging'); });
   for (const eventName of ['dragleave', 'drop']) $('stage').addEventListener(eventName, event => { event.preventDefault(); $('stage').classList.remove('dragging'); });
   $('stage').addEventListener('drop', event => setImage([...event.dataTransfer.files].find(file => file.type.startsWith('image/'))));
 
+  loadPresets();
   renderNav();
   selectOperation('resize');
   refreshHealth();
+  refreshJobs();
+  window.setInterval(refreshJobs, 1500);
 })();)IMAGECPP_JS";
 
 } // namespace

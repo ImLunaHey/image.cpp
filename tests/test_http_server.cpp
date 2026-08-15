@@ -103,7 +103,9 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         playground_css->body.find("--acid: #c9ff43") != std::string::npos && playground_javascript &&
         playground_javascript->status == 200 &&
         playground_javascript->get_header_value("Content-Type").find("text/javascript") == 0 &&
-        playground_javascript->body.find("/v1/remove-background") != std::string::npos && service_info &&
+        playground_javascript->body.find("/v1/remove-background") != std::string::npos &&
+        playground_javascript->body.find("/v1/jobs?limit=50") != std::string::npos &&
+        playground_javascript->body.find("imagecpp.presets.v1") != std::string::npos && service_info &&
         service_info->status == 200 && service_info->body.find("\"name\":\"image.cpp\"") != std::string::npos &&
         health && health->status == 200 && health->body.find("\"status\":\"ok\"") != std::string::npos &&
         health->body.find("\"worker_count\":1") != std::string::npos && operations && models && models->status == 200 &&
