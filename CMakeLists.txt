@@ -562,6 +562,16 @@ if(IMAGECPP_BUILD_TESTS)
         imagecpp_enable_warnings(imagecpp_http_server_test)
         add_test(NAME imagecpp.http-server COMMAND imagecpp_http_server_test)
         set_tests_properties(imagecpp.http-server PROPERTIES TIMEOUT 30)
+        if(IMAGECPP_WITH_VLM AND IMAGECPP_TEST_VLM_MODEL AND IMAGECPP_TEST_VLM_PROJECTION_MODEL)
+            add_test(
+                NAME imagecpp.http-server.vlm-model
+                COMMAND imagecpp_http_server_test
+                    "${IMAGECPP_TEST_VLM_MODEL}"
+                    "${IMAGECPP_TEST_VLM_PROJECTION_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png"
+            )
+            set_tests_properties(imagecpp.http-server.vlm-model PROPERTIES TIMEOUT 120)
+        endif()
     endif()
     if(IMAGECPP_WITH_TESSERACT AND IMAGECPP_TEST_OCR_MODEL)
         add_executable(imagecpp_ocr_c_api_test tests/test_ocr_c_api.c)
