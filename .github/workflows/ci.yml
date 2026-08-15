@@ -44,6 +44,12 @@ jobs:
       - name: Install
         run: cmake --install build --config Release --prefix "${{ runner.temp }}/imagecpp-install"
 
+      - name: Test installed CLI
+        run: >-
+          cmake
+          -DIMAGECPP_INSTALL_PREFIX="${{ runner.temp }}/imagecpp-install"
+          -P cmake/test_installed_cli.cmake
+
       - name: Configure package consumer
         run: >-
           cmake -S tests/package -B package-build
