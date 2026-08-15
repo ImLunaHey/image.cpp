@@ -299,7 +299,8 @@ class HttpServer::Impl final {
                       {"endpoints",
                        {"/healthz",      "/v1/operations", "/v1/resize",     "/v1/ocr",
                         "/v1/depth",     "/v1/embed/image", "/v1/embed/text", "/v1/classify",
-                        "/v1/caption",   "/v1/ask"}}});
+                        "/v1/segment",   "/v1/detect",      "/v1/cutout",     "/v1/remove-background",
+                        "/v1/extract",   "/v1/caption",     "/v1/ask"}}});
         });
         server_.Get("/healthz", [this](const httplib::Request &, httplib::Response &response) {
             set_json(response, 200,

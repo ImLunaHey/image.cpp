@@ -182,6 +182,110 @@ std::vector<std::string> classification_labels(const httplib::Request &request) 
     return labels;
 }
 
+imagecpp_box parse_box(const detail::Json &value, const char *name) {
+    if (!value.is_array() || value.size() != 4) {
+        throw std::invalid_argument(std::string(name) + " must contain [x0,y0,x1,y1]");
+    }
+    try {
+        return {value.at(0).get<float>(), value.at(1).get<float>(), value.at(2).get<float>(),
+                value.at(3).get<float>()};
+    } catch (const nlohmann::json::exception &) {
+        throw std::invalid_argument(std::string(name) + " coordinates must be numbers");
+    }
+}
+
+detail::Json structured_value(const std::string &value, const char *name) {
+    try {
+        if (!value.empty() && value.front() == '[') {
+            return detail::Json::parse(value);
+        }
+        detail::Json result = detail::Json::array();
+        std::stringstream input(value);
+        std::string part;
+        while (std::getline(input, part, ',')) {
+            result.push_back(detail::parse_float(part, name));
+        }
+        return result;
+    } catch (const nlohmann::json::exception &) {
+        throw std::invalid_argument(std::string(name) + " is not valid JSON");
+    }
+}
+
+imagecpp_segment_options segment_options(const httplib::Request &request, std::vector<imagecpp_point_prompt> &points) {
+    imagecpp_segment_options options{};
+    imagecpp_segment_options_init(&options);
+    if (const auto value = detail::request_value(request, "points")) {
+        const detail::Json parsed = structured_value(*value, "points");
+        if (!parsed.is_array()) {
+            throw std::invalid_argument("points must be a JSON array");
+        }
+        for (const detail::Json &point : parsed) {
+            if (!point.is_array() || (point.size() != 2 && point.size() != 3)) {
+                throw std::invalid_argument("each point must contain [x,y] or [x,y,positive]");
+            }
+            try {
+                points.push_back({point.at(0).get<float>(), point.at(1).get<float>(),
+                                  point.size() == 2 || point.at(2).get<bool>() ? 1 : 0});
+            } catch (const nlohmann::json::exception &) {
+                throw std::invalid_argument("point coordinates and labels have invalid types");
+            }
+        }
+    }
+    if (const auto value = detail::request_value(request, "box")) {
+        options.box = parse_box(structured_value(*value, "box"), "box");
+        options.use_box = 1;
+    }
+    if (const auto value = detail::request_value(request, "multimask")) {
+        options.multimask = detail::parse_bool(*value, "multimask") ? 1 : 0;
+    }
+    options.points = points.data();
+    options.point_count = points.size();
+    return options;
+}
+
+imagecpp_detect_options detect_options(const httplib::Request &request, std::string &prompt,
+                                       std::vector<imagecpp_box> &positive_boxes,
+                                       std::vector<imagecpp_box> &negative_boxes) {
+    imagecpp_detect_options options{};
+    imagecpp_detect_options_init(&options);
+    prompt = detail::request_value(request, "prompt").value_or("");
+    if (prompt.empty()) {
+        throw std::invalid_argument("detection requires a prompt");
+    }
+    const auto parse_boxes = [](const std::optional<std::string> &value, const char *name,
+                                std::vector<imagecpp_box> &output) {
+        if (!value) {
+            return;
+        }
+        detail::Json boxes;
+        try {
+            boxes = detail::Json::parse(*value);
+        } catch (const nlohmann::json::exception &) {
+            throw std::invalid_argument(std::string(name) + " must be a JSON array of boxes");
+        }
+        if (!boxes.is_array()) {
+            throw std::invalid_argument(std::string(name) + " must be a JSON array of boxes");
+        }
+        for (const detail::Json &box : boxes) {
+            output.push_back(parse_box(box, name));
+        }
+    };
+    parse_boxes(detail::request_value(request, "positive_boxes"), "positive_boxes", positive_boxes);
+    parse_boxes(detail::request_value(request, "negative_boxes"), "negative_boxes", negative_boxes);
+    if (const auto value = detail::request_value(request, "threshold")) {
+        options.score_threshold = detail::parse_float(*value, "threshold");
+    }
+    if (const auto value = detail::request_value(request, "nms")) {
+        options.nms_threshold = detail::parse_float(*value, "nms");
+    }
+    options.prompt = prompt.c_str();
+    options.positive_exemplars = positive_boxes.data();
+    options.positive_exemplar_count = positive_boxes.size();
+    options.negative_exemplars = negative_boxes.data();
+    options.negative_exemplar_count = negative_boxes.size();
+    return options;
+}
+
 } // namespace
 
 class OperationApi::Impl final {
@@ -207,6 +311,21 @@ class OperationApi::Impl final {
         });
         server.Post("/v1/classify", [this](const httplib::Request &request, httplib::Response &response) {
             handle_classify(request, response);
+        });
+        server.Post("/v1/segment", [this](const httplib::Request &request, httplib::Response &response) {
+            handle_segment(request, response);
+        });
+        server.Post("/v1/detect", [this](const httplib::Request &request, httplib::Response &response) {
+            handle_detect(request, response);
+        });
+        server.Post("/v1/cutout", [this](const httplib::Request &request, httplib::Response &response) {
+            handle_cutout(request, response);
+        });
+        server.Post("/v1/remove-background", [this](const httplib::Request &request, httplib::Response &response) {
+            handle_cutout(request, response);
+        });
+        server.Post("/v1/extract", [this](const httplib::Request &request, httplib::Response &response) {
+            handle_extract(request, response);
         });
     }
 
@@ -473,6 +592,234 @@ class OperationApi::Impl final {
                     {{"label_index", item.label_index}, {"label", item.label}, {"score", item.score}});
             }
             detail::set_json(response, 200, {{"classifications", std::move(classifications)}});
+        } catch (const imagecpp::Error &error) {
+            detail::set_library_error(response, error);
+        } catch (const std::invalid_argument &error) {
+            detail::set_error(response, 400, "invalid_request", error.what());
+        } catch (const std::exception &error) {
+            detail::set_error(response, 500, "internal_error", error.what());
+        }
+    }
+
+    std::unique_ptr<imagecpp::Model> load_upscaler(uint32_t factor) {
+        if (factor <= 1) {
+            return nullptr;
+        }
+        imagecpp_upscaler_model_options options{};
+        imagecpp_upscaler_model_options_init(&options);
+        options.model_path = config_.upscaler_model_path.c_str();
+        options.threads = config_.threads;
+        options.device = config_.device;
+        options.tile_size = config_.upscaler_tile_size;
+        return std::make_unique<imagecpp::Model>(runtime_, options);
+    }
+
+    void check_output_limit(const imagecpp_const_image_view &image) const {
+        if (static_cast<uint64_t>(image.width) * image.height > config_.max_output_pixels) {
+            throw std::invalid_argument("result image exceeds the configured output pixel limit");
+        }
+    }
+
+    void check_scaled_output_limit(const imagecpp::Image &source, uint32_t factor) const {
+        const imagecpp_const_image_view image = source.view();
+        const uint64_t pixels = static_cast<uint64_t>(image.width) * image.height;
+        if (factor == 0 || pixels > config_.max_output_pixels / factor / factor) {
+            throw std::invalid_argument("requested upscale exceeds the configured output pixel limit");
+        }
+    }
+
+    void handle_segment(const httplib::Request &request, httplib::Response &response) {
+        if (!require_model(response, config_.segment_model_path, "segmentation")) {
+            return;
+        }
+        try {
+            std::unique_ptr<imagecpp::Image> image = request_image(request, response);
+            if (!image) {
+                return;
+            }
+            std::vector<imagecpp_point_prompt> points;
+            const imagecpp_segment_options options = segment_options(request, points);
+            const std::lock_guard<std::mutex> lock(model_mutex_);
+            const imagecpp_model_options load_options = model_options(config_, config_.segment_model_path);
+            imagecpp::Model model(runtime_, "image.segment.sam", load_options);
+            imagecpp::Session session(model);
+            session.set_image(*image);
+            const imagecpp::SegmentResult result = session.segment(options);
+            detail::Json segments = detail::Json::array();
+            for (size_t index = 0; index < result.size(); ++index) {
+                const imagecpp::SegmentInfo item = result.at(index);
+                segments.push_back({{"box", box_json(item.box)},
+                                    {"score", item.score},
+                                    {"iou_score", item.iou_score},
+                                    {"mask", detail::encoded_image_json(item.mask)}});
+            }
+            detail::set_json(response, 200, {{"segments", std::move(segments)}});
+        } catch (const imagecpp::Error &error) {
+            detail::set_library_error(response, error);
+        } catch (const std::invalid_argument &error) {
+            detail::set_error(response, 400, "invalid_request", error.what());
+        } catch (const std::exception &error) {
+            detail::set_error(response, 500, "internal_error", error.what());
+        }
+    }
+
+    void handle_detect(const httplib::Request &request, httplib::Response &response) {
+        if (!require_model(response, config_.detect_model_path, "detection")) {
+            return;
+        }
+        try {
+            std::unique_ptr<imagecpp::Image> image = request_image(request, response);
+            if (!image) {
+                return;
+            }
+            std::string prompt;
+            std::vector<imagecpp_box> positive_boxes;
+            std::vector<imagecpp_box> negative_boxes;
+            const imagecpp_detect_options options =
+                detect_options(request, prompt, positive_boxes, negative_boxes);
+            const std::lock_guard<std::mutex> lock(model_mutex_);
+            const imagecpp_model_options load_options = model_options(config_, config_.detect_model_path);
+            imagecpp::Model model(runtime_, "image.detect.sam3", load_options);
+            imagecpp::Session session(model);
+            session.set_image(*image);
+            const imagecpp::DetectionResult result = session.detect(options);
+            detail::Json detections = detail::Json::array();
+            for (size_t index = 0; index < result.size(); ++index) {
+                const imagecpp::DetectionInfo item = result.at(index);
+                detections.push_back({{"label", item.label},
+                                      {"box", box_json(item.box)},
+                                      {"score", item.score},
+                                      {"iou_score", item.iou_score},
+                                      {"mask", detail::encoded_image_json(item.mask)}});
+            }
+            detail::set_json(response, 200, {{"detections", std::move(detections)}});
+        } catch (const imagecpp::Error &error) {
+            detail::set_library_error(response, error);
+        } catch (const std::invalid_argument &error) {
+            detail::set_error(response, 400, "invalid_request", error.what());
+        } catch (const std::exception &error) {
+            detail::set_error(response, 500, "internal_error", error.what());
+        }
+    }
+
+    void handle_cutout(const httplib::Request &request, httplib::Response &response) {
+        if (!require_model(response, config_.segment_model_path, "segmentation")) {
+            return;
+        }
+        try {
+            std::unique_ptr<imagecpp::Image> image = request_image(request, response);
+            if (!image) {
+                return;
+            }
+            std::vector<imagecpp_point_prompt> points;
+            imagecpp_cutout_options options{};
+            imagecpp_cutout_options_init(&options);
+            options.segment = segment_options(request, points);
+            if (const auto value = detail::request_value(request, "crop")) {
+                options.crop_to_mask = detail::parse_bool(*value, "crop") ? 1 : 0;
+            }
+            if (const auto value = detail::request_value(request, "padding")) {
+                options.padding = detail::parse_uint32(*value, "padding", true);
+            }
+            if (const auto value = detail::request_value(request, "upscale")) {
+                options.upscale_factor = detail::parse_uint32(*value, "upscale");
+            }
+            if (options.upscale_factor > 1 && config_.upscaler_model_path.empty()) {
+                detail::set_error(response, 503, "model_not_configured", "no upscaler model is configured");
+                return;
+            }
+            check_scaled_output_limit(*image, options.upscale_factor);
+            const std::lock_guard<std::mutex> lock(model_mutex_);
+            const imagecpp_model_options load_options = model_options(config_, config_.segment_model_path);
+            imagecpp::Model model(runtime_, "image.segment.sam", load_options);
+            imagecpp::Session session(model);
+            std::unique_ptr<imagecpp::Model> upscaler = load_upscaler(options.upscale_factor);
+            const imagecpp::CutoutResult result = imagecpp::cutout(session, upscaler.get(), *image, options);
+            const imagecpp::CutoutInfo info = result.info();
+            check_output_limit(info.image);
+            if (detail::request_value(request, "response").value_or("image") == "json") {
+                detail::set_json(response, 200,
+                                 {{"image", detail::encoded_image_json(info.image)},
+                                  {"mask", detail::encoded_image_json(info.mask)},
+                                  {"source_box", box_json(info.source_box)},
+                                  {"selected_mask_index", info.selected_mask_index},
+                                  {"score", info.score},
+                                  {"iou_score", info.iou_score}});
+            } else {
+                response.set_header("X-Imagecpp-Source-Box", box_json(info.source_box).dump());
+                response.set_header("X-Imagecpp-Score", std::to_string(info.score));
+                response.set_header("X-Imagecpp-Iou-Score", std::to_string(info.iou_score));
+                detail::set_image(response, info.image, detail::response_format(request));
+            }
+        } catch (const imagecpp::Error &error) {
+            detail::set_library_error(response, error);
+        } catch (const std::invalid_argument &error) {
+            detail::set_error(response, 400, "invalid_request", error.what());
+        } catch (const std::exception &error) {
+            detail::set_error(response, 500, "internal_error", error.what());
+        }
+    }
+
+    void handle_extract(const httplib::Request &request, httplib::Response &response) {
+        if (!require_model(response, config_.detect_model_path, "detection")) {
+            return;
+        }
+        try {
+            std::unique_ptr<imagecpp::Image> image = request_image(request, response);
+            if (!image) {
+                return;
+            }
+            std::string prompt;
+            std::vector<imagecpp_box> positive_boxes;
+            std::vector<imagecpp_box> negative_boxes;
+            imagecpp_grounded_cutout_options options{};
+            imagecpp_grounded_cutout_options_init(&options);
+            options.detect = detect_options(request, prompt, positive_boxes, negative_boxes);
+            if (const auto value = detail::request_value(request, "selection")) {
+                if (*value == "all") {
+                    options.selection = IMAGECPP_GROUNDED_CUTOUT_ALL;
+                } else if (*value != "best") {
+                    throw std::invalid_argument("selection must be best or all");
+                }
+            }
+            if (const auto value = detail::request_value(request, "crop")) {
+                options.crop_to_mask = detail::parse_bool(*value, "crop") ? 1 : 0;
+            }
+            if (const auto value = detail::request_value(request, "padding")) {
+                options.padding = detail::parse_uint32(*value, "padding", true);
+            }
+            if (const auto value = detail::request_value(request, "upscale")) {
+                options.upscale_factor = detail::parse_uint32(*value, "upscale");
+            }
+            if (options.upscale_factor > 1 && config_.upscaler_model_path.empty()) {
+                detail::set_error(response, 503, "model_not_configured", "no upscaler model is configured");
+                return;
+            }
+            check_scaled_output_limit(*image, options.upscale_factor);
+            const std::lock_guard<std::mutex> lock(model_mutex_);
+            const imagecpp_model_options load_options = model_options(config_, config_.detect_model_path);
+            imagecpp::Model model(runtime_, "image.detect.sam3", load_options);
+            imagecpp::Session session(model);
+            std::unique_ptr<imagecpp::Model> upscaler = load_upscaler(options.upscale_factor);
+            const imagecpp::GroundedCutoutResult result =
+                imagecpp::grounded_cutout(session, upscaler.get(), *image, options);
+            const imagecpp::GroundedCutoutInfo info = result.info();
+            check_output_limit(info.image);
+            if (detail::request_value(request, "response").value_or("image") == "json") {
+                detail::set_json(response, 200,
+                                 {{"image", detail::encoded_image_json(info.image)},
+                                  {"mask", detail::encoded_image_json(info.mask)},
+                                  {"source_box", box_json(info.source_box)},
+                                  {"matched_detection_count", info.matched_detection_count},
+                                  {"selected_detection_count", info.selected_detection_count},
+                                  {"score", info.best_score},
+                                  {"iou_score", info.best_iou_score}});
+            } else {
+                response.set_header("X-Imagecpp-Source-Box", box_json(info.source_box).dump());
+                response.set_header("X-Imagecpp-Matched-Detections", std::to_string(info.matched_detection_count));
+                response.set_header("X-Imagecpp-Selected-Detections", std::to_string(info.selected_detection_count));
+                detail::set_image(response, info.image, detail::response_format(request));
+            }
         } catch (const imagecpp::Error &error) {
             detail::set_library_error(response, error);
         } catch (const std::invalid_argument &error) {

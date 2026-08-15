@@ -619,6 +619,19 @@ if(IMAGECPP_BUILD_TESTS)
             )
             set_tests_properties(imagecpp.http-server.analysis-models PROPERTIES TIMEOUT 180)
         endif()
+        if(IMAGECPP_WITH_SAM3 AND IMAGECPP_WITH_STABLE_DIFFUSION AND IMAGECPP_TEST_SAM_MODEL AND
+           IMAGECPP_TEST_SAM3_MODEL AND IMAGECPP_TEST_UPSCALER_MODEL)
+            add_test(
+                NAME imagecpp.http-server.vision-models
+                COMMAND imagecpp_http_server_test
+                    --vision
+                    "${IMAGECPP_TEST_SAM_MODEL}"
+                    "${IMAGECPP_TEST_SAM3_MODEL}"
+                    "${IMAGECPP_TEST_UPSCALER_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png"
+            )
+            set_tests_properties(imagecpp.http-server.vision-models PROPERTIES TIMEOUT 300)
+        endif()
     endif()
     if(IMAGECPP_WITH_TESSERACT AND IMAGECPP_TEST_OCR_MODEL)
         add_executable(imagecpp_ocr_c_api_test tests/test_ocr_c_api.c)

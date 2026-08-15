@@ -24,7 +24,12 @@ void print_result(const char *name, const httplib::Result &result) {
         std::cerr << "request failed\n";
         return;
     }
-    std::cerr << result->status << " " << result->body << '\n';
+    constexpr size_t max_body = 1000;
+    std::cerr << result->status << " " << result->body.substr(0, max_body);
+    if (result->body.size() > max_body) {
+        std::cerr << "... [" << result->body.size() << " bytes]";
+    }
+    std::cerr << '\n';
 }
 
 bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &image_bytes) {
@@ -149,6 +154,51 @@ bool run_analysis_requests(imagecpp::server::HttpServerConfig config, const std:
     return passed;
 }
 
+bool run_vision_requests(imagecpp::server::HttpServerConfig config, const std::string &image_bytes) {
+    config.port = 0;
+    imagecpp::server::HttpServer server(std::move(config));
+    const int port = server.bind();
+    std::thread listener([&server] { (void)server.listen(); });
+    server.wait_until_ready();
+
+    httplib::Client client("127.0.0.1", port);
+    client.set_read_timeout(180);
+    const httplib::UploadFormDataItems segment_request = {
+        {"image", image_bytes, "cat.png", "image/png"},
+        {"points", "[[256,256,true]]", "", ""},
+    };
+    const httplib::Result segment = client.Post("/v1/segment", segment_request);
+    httplib::UploadFormDataItems cutout_request = segment_request;
+    cutout_request.push_back({"upscale", "4", "", ""});
+    const httplib::Result cutout = client.Post("/v1/cutout", cutout_request);
+    const httplib::UploadFormDataItems detect_request = {
+        {"image", image_bytes, "cat.png", "image/png"},
+        {"prompt", "cat", "", ""},
+        {"threshold", "0.3", "", ""},
+    };
+    const httplib::Result detect = client.Post("/v1/detect", detect_request);
+    httplib::UploadFormDataItems extract_request = detect_request;
+    extract_request.push_back({"response", "json", "", ""});
+    const httplib::Result extract = client.Post("/v1/extract", extract_request);
+    const bool passed = segment && segment->status == 200 &&
+                        segment->body.find("\"segments\"") != std::string::npos &&
+                        segment->body.find("\"base64\"") != std::string::npos && cutout && cutout->status == 200 &&
+                        cutout->get_header_value("Content-Type") == "image/png" && cutout->body.size() > 8 && detect &&
+                        detect->status == 200 && detect->body.find("\"detections\"") != std::string::npos &&
+                        detect->body.find("\"label\":\"cat\"") != std::string::npos && extract &&
+                        extract->status == 200 && extract->body.find("\"image\":{") != std::string::npos &&
+                        extract->body.find("\"matched_detection_count\"") != std::string::npos;
+    server.stop();
+    listener.join();
+    if (!passed) {
+        print_result("segment", segment);
+        print_result("cutout", cutout);
+        print_result("detect", detect);
+        print_result("extract", extract);
+    }
+    return passed;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -163,6 +213,13 @@ int main(int argc, char **argv) {
             config.clip_model_path = argv[4];
             const std::string image = read_file(argv[5]);
             return !image.empty() && run_analysis_requests(std::move(config), image) ? 0 : 1;
+        }
+        if (argc == 6 && std::string(argv[1]) == "--vision") {
+            config.segment_model_path = argv[2];
+            config.detect_model_path = argv[3];
+            config.upscaler_model_path = argv[4];
+            const std::string image = read_file(argv[5]);
+            return !image.empty() && run_vision_requests(std::move(config), image) ? 0 : 1;
         }
         if (argc != 4) {
             return 1;
