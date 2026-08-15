@@ -9,6 +9,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -91,6 +92,7 @@ struct Arguments {
     int32_t top_k = 40;
     uint32_t seed = 0;
     bool json = false;
+    bool stream = false;
 };
 
 Arguments parse_arguments(int argc, char **argv, bool ask) {
@@ -167,11 +169,28 @@ Arguments parse_arguments(int argc, char **argv, bool ask) {
             result.device = IMAGECPP_DEVICE_GPU;
         } else if (option == "--json") {
             result.json = true;
+        } else if (option == "--stream") {
+            result.stream = true;
         } else {
             throw std::runtime_error("unknown visual query option: " + option);
         }
     }
+    if (result.json && result.stream) {
+        throw std::runtime_error("--json and --stream cannot be used together");
+    }
     return result;
+}
+
+const char *finish_reason_name(imagecpp_text_finish_reason reason) {
+    switch (reason) {
+    case IMAGECPP_TEXT_FINISH_END_OF_GENERATION:
+        return "end_of_generation";
+    case IMAGECPP_TEXT_FINISH_LENGTH:
+        return "length";
+    case IMAGECPP_TEXT_FINISH_CANCELLED:
+        return "cancelled";
+    }
+    return "unknown";
 }
 
 int run(const Arguments &arguments) {
@@ -194,7 +213,19 @@ int run(const Arguments &arguments) {
     query_options.top_p = arguments.top_p;
     query_options.top_k = arguments.top_k;
     query_options.seed = arguments.seed;
-    const imagecpp::TextInfo result = imagecpp::visual_query(model, image, query_options).info();
+    imagecpp::TextResult generated = arguments.stream
+                                         ? imagecpp::visual_query_stream(
+                                               model, image, query_options, [](std::string_view chunk) {
+                                                   std::cout.write(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+                                                   std::cout.flush();
+                                                   return true;
+                                               })
+                                         : imagecpp::visual_query(model, image, query_options);
+    const imagecpp::TextInfo result = generated.info();
+    if (arguments.stream) {
+        std::cout << '\n';
+        return 0;
+    }
     if (!arguments.json) {
         std::cout << result.text << '\n';
         return 0;
@@ -202,9 +233,7 @@ int run(const Arguments &arguments) {
     std::cout << "{\"text\":";
     write_json_string(std::cout, result.text);
     std::cout << ",\"prompt_tokens\":" << result.prompt_tokens << ",\"generated_tokens\":" << result.generated_tokens
-              << ",\"finish_reason\":\""
-              << (result.finish_reason == IMAGECPP_TEXT_FINISH_END_OF_GENERATION ? "end_of_generation" : "length")
-              << "\"}\n";
+              << ",\"finish_reason\":\"" << finish_reason_name(result.finish_reason) << "\"}\n";
     return 0;
 }
 
@@ -225,5 +254,6 @@ void print_vlm_command_usage(std::ostream &output) {
            << "  --context <count>     model context tokens (default: 4096)\n"
            << "  --threads <count>     CPU worker threads\n"
            << "  --cpu | --gpu         select a compute device (default: auto)\n"
-           << "  --json                emit text and token metadata as JSON\n";
+           << "  --json                emit text and token metadata as JSON\n"
+           << "  --stream              print generated text fragments immediately\n";
 }

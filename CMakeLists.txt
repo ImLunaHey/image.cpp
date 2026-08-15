@@ -612,6 +612,22 @@ if(IMAGECPP_BUILD_TESTS)
                 PASS_REGULAR_EXPRESSION "[Cc]at"
                 TIMEOUT 120
             )
+            add_test(
+                NAME imagecpp.cli.ask-stream-model
+                COMMAND imagecpp_cli ask
+                    "${IMAGECPP_TEST_VLM_MODEL}"
+                    "${IMAGECPP_TEST_VLM_PROJECTION_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png"
+                    "What animal is in the image? Answer with one word."
+                    --max-tokens 8
+                    --temperature 0
+                    --cpu
+                    --stream
+            )
+            set_tests_properties(imagecpp.cli.ask-stream-model PROPERTIES
+                PASS_REGULAR_EXPRESSION "[Cc]at"
+                TIMEOUT 120
+            )
         endif()
         if(IMAGECPP_WITH_SAM3 AND IMAGECPP_TEST_SAM_MODEL)
             add_test(
