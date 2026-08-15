@@ -508,9 +508,7 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
     el.endpoint.textContent = `POST ${next.endpoint}`;
     el.runLabel.textContent = `Run ${next.title.toLowerCase()}`;
     const available = isAvailable(next);
-    const warm = next.model === 'vlm' || state.health?.model_cache?.loaded_families?.includes(next.model);
-    el.badge.textContent = next.model ? `${next.model.toUpperCase()} · ${available ? (warm ? 'warm' : 'ready') : 'not configured'}` : 'No model needed';
-    el.badge.classList.toggle('unavailable', !available);
+    updateModelBadge(next);
     el.run.disabled = !available;
     el.message.hidden = available;
     if (!available) el.message.textContent = `Start the server with a ${next.model} model to use this operation.`;
@@ -814,6 +812,7 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
   function openJobs() {
     el.drawer.hidden = false;
     refreshJobs();
+    refreshRuntime();
   }
 
   function closeJobs() {
@@ -910,6 +909,29 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
       : `${families.length}/${capacity} warm · ${cache.hits || 0} hits${families.length ? ` · ${families.join(', ')}` : ''}`;
   }
 
+  function updateModelBadge(operation = state.operation) {
+    const available = isAvailable(operation);
+    const warm = operation.model === 'vlm' || state.health?.model_cache?.loaded_families?.includes(operation.model);
+    el.badge.textContent = operation.model
+      ? `${operation.model.toUpperCase()} · ${available ? (warm ? 'warm' : 'ready') : 'not configured'}`
+      : 'No model needed';
+    el.badge.classList.toggle('unavailable', !available);
+  }
+
+  async function refreshRuntime() {
+    try {
+      const response = await fetch('/v1/models');
+      if (!response.ok) throw await responseError(response);
+      const data = await response.json();
+      state.health = state.health || {};
+      state.health.model_cache = data.cache;
+      updateRuntime();
+      updateModelBadge();
+    } catch (_) {
+      // Health reporting owns connectivity errors; keep the last known cache state.
+    }
+  }
+
   async function clearModelCache() {
     const button = $('clear-cache');
     button.disabled = true;
@@ -917,9 +939,10 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
       const response = await fetch('/v1/models/cache', { method: 'DELETE' });
       if (!response.ok) throw await responseError(response);
       const data = await response.json();
-      if (state.health) state.health.model_cache = data.cache;
+      state.health = state.health || {};
+      state.health.model_cache = data.cache;
       updateRuntime();
-      selectOperation(state.operation.id);
+      updateModelBadge();
     } catch (error) {
       showMessage(error.message || String(error));
     } finally {
@@ -1043,7 +1066,7 @@ constexpr char kJavascript[] = R"IMAGECPP_JS((() => {
   el.jobsButton.addEventListener('click', openJobs);
   $('close-jobs').addEventListener('click', closeJobs);
   $('drawer-backdrop').addEventListener('click', closeJobs);
-  $('refresh-jobs').addEventListener('click', refreshJobs);
+  $('refresh-jobs').addEventListener('click', () => { refreshJobs(); refreshRuntime(); });
   $('clear-cache').addEventListener('click', clearModelCache);
   el.jobList.addEventListener('click', event => {
     const cancel = event.target.closest('[data-cancel-job]');
