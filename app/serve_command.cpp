@@ -103,6 +103,12 @@ int serve_command(int argc, char **argv) {
                 throw std::runtime_error("upscaler tile size is too large");
             }
             config.upscaler_tile_size = static_cast<int32_t>(tile);
+        } else if (option == "--no-flash-attention") {
+            config.diffusion_flash_attention = false;
+        } else if (option == "--keep-text-encoder-on-cpu") {
+            config.keep_text_encoder_on_cpu = true;
+        } else if (option == "--keep-vae-on-cpu") {
+            config.keep_vae_on_cpu = true;
         } else if (option == "--threads") {
             const uint64_t threads = positive_integer(next_value(argc, argv, index, option), "thread count");
             if (threads > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) {
@@ -151,6 +157,8 @@ void print_serve_command_usage(std::ostream &output) {
            << "  --diffusion-model/--vae/--clip-l/--clip-g/--t5xxl/--llm <path> split diffusion components\n"
            << "  --upscaler-model <path> ESRGAN-family upscaler model\n"
            << "  --upscaler-tile <n>    upscaler tile size (default: 128)\n"
+           << "  --no-flash-attention   disable diffusion flash attention\n"
+           << "  --keep-text-encoder-on-cpu / --keep-vae-on-cpu\n"
            << "  --context <count>      VLM context tokens (default: 4096)\n"
            << "  --threads <count>      CPU worker threads\n"
            << "  --cpu | --gpu          select the model compute device (default: auto)\n";

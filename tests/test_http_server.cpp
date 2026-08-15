@@ -62,11 +62,17 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         const httplib::Result unavailable_depth = client.Post("/v1/depth", resize_source, "image/x-portable-pixmap");
         const httplib::Result unavailable_clip =
             client.Post("/v1/embed/image", resize_source, "image/x-portable-pixmap");
+        const httplib::Result unavailable_generate =
+            client.Post("/v1/generate", "{\"prompt\":\"test\"}", "application/json");
+        const httplib::Result unavailable_upscale =
+            client.Post("/v1/upscale", resize_source, "image/x-portable-pixmap");
         passed = passed && health->body.find("\"vlm_loaded\":false") != std::string::npos && unavailable &&
                  unavailable->status == 503 && unavailable->body.find("model_not_loaded") != std::string::npos &&
                  unavailable_ocr && unavailable_ocr->status == 503 &&
                  unavailable_ocr->body.find("model_not_configured") != std::string::npos && unavailable_depth &&
-                 unavailable_depth->status == 503 && unavailable_clip && unavailable_clip->status == 503;
+                 unavailable_depth->status == 503 && unavailable_clip && unavailable_clip->status == 503 &&
+                 unavailable_generate && unavailable_generate->status == 503 && unavailable_upscale &&
+                 unavailable_upscale->status == 503;
     } else {
         const httplib::Result caption = client.Post("/v1/caption?temperature=0&max_tokens=16", image_bytes, "image/png");
         const httplib::UploadFormDataItems question = {
@@ -199,6 +205,43 @@ bool run_vision_requests(imagecpp::server::HttpServerConfig config, const std::s
     return passed;
 }
 
+bool run_creative_requests(imagecpp::server::HttpServerConfig config, const std::string &image_bytes,
+                           const std::string &small_image_bytes) {
+    config.port = 0;
+    imagecpp::server::HttpServer server(std::move(config));
+    const int port = server.bind();
+    std::thread listener([&server] { (void)server.listen(); });
+    server.wait_until_ready();
+
+    httplib::Client client("127.0.0.1", port);
+    client.set_read_timeout(240);
+    const std::string generation_body =
+        "{\"prompt\":\"a red square on a white background\",\"width\":64,\"height\":64,"
+        "\"steps\":1,\"seed\":1,\"response\":\"image\"}";
+    const httplib::Result generated = client.Post("/v1/generate", generation_body, "application/json");
+    const httplib::UploadFormDataItems edit_request = {
+        {"image", image_bytes, "cat.png", "image/png"},
+        {"prompt", "a warm photograph", "", ""},
+        {"steps", "1", "", ""},
+        {"seed", "1", "", ""},
+    };
+    const httplib::Result edited = client.Post("/v1/edit", edit_request);
+    const httplib::Result upscaled = client.Post("/v1/upscale?factor=4", small_image_bytes, "image/x-portable-pixmap");
+    const bool passed = generated && generated->status == 200 &&
+                        generated->get_header_value("Content-Type") == "image/png" && generated->body.size() > 8 &&
+                        edited && edited->status == 200 && edited->body.find("\"images\"") != std::string::npos &&
+                        edited->body.find("\"base64\"") != std::string::npos && upscaled && upscaled->status == 200 &&
+                        upscaled->get_header_value("Content-Type") == "image/png" && upscaled->body.size() > 8;
+    server.stop();
+    listener.join();
+    if (!passed) {
+        print_result("generated", generated);
+        print_result("edited", edited);
+        print_result("upscaled", upscaled);
+    }
+    return passed;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -220,6 +263,16 @@ int main(int argc, char **argv) {
             config.upscaler_model_path = argv[4];
             const std::string image = read_file(argv[5]);
             return !image.empty() && run_vision_requests(std::move(config), image) ? 0 : 1;
+        }
+        if (argc == 6 && std::string(argv[1]) == "--creative") {
+            config.diffusion_checkpoint_path = argv[2];
+            config.upscaler_model_path = argv[3];
+            const std::string image = read_file(argv[4]);
+            const std::string small_image = read_file(argv[5]);
+            return !image.empty() && !small_image.empty() &&
+                           run_creative_requests(std::move(config), image, small_image)
+                       ? 0
+                       : 1;
         }
         if (argc != 4) {
             return 1;

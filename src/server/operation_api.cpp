@@ -286,6 +286,96 @@ imagecpp_detect_options detect_options(const httplib::Request &request, std::str
     return options;
 }
 
+class RequestParameters final {
+  public:
+    explicit RequestParameters(const httplib::Request &request) : request_(request) {
+        const std::string content_type = request.get_header_value("Content-Type");
+        if (content_type.find("application/json") != std::string::npos && !request.body.empty()) {
+            try {
+                body_ = detail::Json::parse(request.body);
+            } catch (const nlohmann::json::exception &) {
+                throw std::invalid_argument("request body is not valid JSON");
+            }
+            if (!body_.is_object()) {
+                throw std::invalid_argument("JSON request body must be an object");
+            }
+        }
+    }
+
+    std::optional<std::string> value(const std::string &name) const {
+        if (const auto request_value = detail::request_value(request_, name)) {
+            return request_value;
+        }
+        if (!body_.contains(name) || body_.at(name).is_null()) {
+            return std::nullopt;
+        }
+        const detail::Json &item = body_.at(name);
+        if (item.is_string()) {
+            return item.get<std::string>();
+        }
+        if (item.is_boolean()) {
+            return item.get<bool>() ? "true" : "false";
+        }
+        if (item.is_number()) {
+            return item.dump();
+        }
+        throw std::invalid_argument(name + " must be a string, number, or boolean");
+    }
+
+  private:
+    const httplib::Request &request_;
+    detail::Json body_ = detail::Json::object();
+};
+
+imagecpp_sample_method sample_method(const std::string &value) {
+    if (value == "auto") {
+        return IMAGECPP_SAMPLE_METHOD_AUTO;
+    }
+    if (value == "euler") {
+        return IMAGECPP_SAMPLE_METHOD_EULER;
+    }
+    if (value == "euler-a") {
+        return IMAGECPP_SAMPLE_METHOD_EULER_A;
+    }
+    if (value == "dpm++2m") {
+        return IMAGECPP_SAMPLE_METHOD_DPM_PLUS_PLUS_2M;
+    }
+    if (value == "lcm") {
+        return IMAGECPP_SAMPLE_METHOD_LCM;
+    }
+    if (value == "ddim") {
+        return IMAGECPP_SAMPLE_METHOD_DDIM;
+    }
+    throw std::invalid_argument("sampler must be auto, euler, euler-a, dpm++2m, lcm, or ddim");
+}
+
+imagecpp_scheduler scheduler(const std::string &value) {
+    if (value == "auto") {
+        return IMAGECPP_SCHEDULER_AUTO;
+    }
+    if (value == "discrete") {
+        return IMAGECPP_SCHEDULER_DISCRETE;
+    }
+    if (value == "karras") {
+        return IMAGECPP_SCHEDULER_KARRAS;
+    }
+    if (value == "exponential") {
+        return IMAGECPP_SCHEDULER_EXPONENTIAL;
+    }
+    if (value == "ays") {
+        return IMAGECPP_SCHEDULER_AYS;
+    }
+    if (value == "sgm-uniform") {
+        return IMAGECPP_SCHEDULER_SGM_UNIFORM;
+    }
+    if (value == "simple") {
+        return IMAGECPP_SCHEDULER_SIMPLE;
+    }
+    throw std::invalid_argument("scheduler must be auto, discrete, karras, exponential, ays, sgm-uniform, or simple");
+}
+
+const char *nullable_path(const std::string &path) { return path.empty() ? nullptr : path.c_str(); }
+
 } // namespace
 
 class OperationApi::Impl final {
@@ -326,6 +416,15 @@ class OperationApi::Impl final {
         });
         server.Post("/v1/extract", [this](const httplib::Request &request, httplib::Response &response) {
             handle_extract(request, response);
+        });
+        server.Post("/v1/generate", [this](const httplib::Request &request, httplib::Response &response) {
+            handle_generate(request, response, false);
+        });
+        server.Post("/v1/edit", [this](const httplib::Request &request, httplib::Response &response) {
+            handle_generate(request, response, true);
+        });
+        server.Post("/v1/upscale", [this](const httplib::Request &request, httplib::Response &response) {
+            handle_upscale(request, response);
         });
     }
 
@@ -819,6 +918,180 @@ class OperationApi::Impl final {
                 response.set_header("X-Imagecpp-Matched-Detections", std::to_string(info.matched_detection_count));
                 response.set_header("X-Imagecpp-Selected-Detections", std::to_string(info.selected_detection_count));
                 detail::set_image(response, info.image, detail::response_format(request));
+            }
+        } catch (const imagecpp::Error &error) {
+            detail::set_library_error(response, error);
+        } catch (const std::invalid_argument &error) {
+            detail::set_error(response, 400, "invalid_request", error.what());
+        } catch (const std::exception &error) {
+            detail::set_error(response, 500, "internal_error", error.what());
+        }
+    }
+
+    std::unique_ptr<imagecpp::Model> load_diffusion_model() {
+        imagecpp_diffusion_model_options options{};
+        imagecpp_diffusion_model_options_init(&options);
+        options.model_path = nullable_path(config_.diffusion_checkpoint_path);
+        options.diffusion_model_path = nullable_path(config_.diffusion_model_path);
+        options.vae_path = nullable_path(config_.vae_model_path);
+        options.clip_l_path = nullable_path(config_.clip_l_model_path);
+        options.clip_g_path = nullable_path(config_.clip_g_model_path);
+        options.t5xxl_path = nullable_path(config_.t5xxl_model_path);
+        options.llm_path = nullable_path(config_.llm_model_path);
+        options.threads = config_.threads;
+        options.device = config_.device;
+        options.flash_attention = config_.diffusion_flash_attention ? 1 : 0;
+        options.keep_text_encoder_on_cpu = config_.keep_text_encoder_on_cpu ? 1 : 0;
+        options.keep_vae_on_cpu = config_.keep_vae_on_cpu ? 1 : 0;
+        return std::make_unique<imagecpp::Model>(runtime_, options);
+    }
+
+    void handle_generate(const httplib::Request &request, httplib::Response &response, bool editing) {
+        if (!require_model(response,
+                           config_.diffusion_checkpoint_path.empty() ? config_.diffusion_model_path
+                                                                     : config_.diffusion_checkpoint_path,
+                           "diffusion")) {
+            return;
+        }
+        try {
+            const RequestParameters parameters(request);
+            std::unique_ptr<imagecpp::Image> initial_image;
+            std::unique_ptr<imagecpp::Image> mask;
+            if (editing) {
+                initial_image = request_image(request, response);
+                if (!initial_image) {
+                    return;
+                }
+                if (request.is_multipart_form_data() && request.form.has_file("mask")) {
+                    try {
+                        mask = std::make_unique<imagecpp::Image>(detail::decode_request_image(request, "mask", false));
+                    } catch (const imagecpp::Error &error) {
+                        detail::set_invalid_image(response, error);
+                        return;
+                    }
+                }
+            }
+
+            std::string prompt = parameters.value("prompt").value_or("");
+            std::string negative_prompt = parameters.value("negative_prompt").value_or("");
+            if (prompt.empty()) {
+                throw std::invalid_argument(editing ? "editing requires a prompt" : "generation requires a prompt");
+            }
+            imagecpp_generate_options options{};
+            imagecpp_generate_options_init(&options);
+            options.prompt = prompt.c_str();
+            options.negative_prompt = negative_prompt.c_str();
+            if (editing) {
+                const imagecpp::Image &source = *initial_image;
+                const imagecpp_const_image_view source_view = source.view();
+                options.width = source_view.width;
+                options.height = source_view.height;
+            }
+            generate_response(request, response, parameters, options, initial_image.get(), mask.get());
+        } catch (const imagecpp::Error &error) {
+            detail::set_library_error(response, error);
+        } catch (const std::invalid_argument &error) {
+            detail::set_error(response, 400, "invalid_request", error.what());
+        } catch (const std::exception &error) {
+            detail::set_error(response, 500, "internal_error", error.what());
+        }
+    }
+
+    void generate_response(const httplib::Request &request, httplib::Response &response,
+                           const RequestParameters &parameters, imagecpp_generate_options options,
+                           const imagecpp::Image *initial_image, const imagecpp::Image *mask) {
+        imagecpp_const_image_view initial_view{};
+        imagecpp_const_image_view mask_view{};
+        if (initial_image != nullptr) {
+            initial_view = initial_image->view();
+            options.init_image = &initial_view;
+        }
+        if (mask != nullptr) {
+            mask_view = mask->view();
+            options.mask = &mask_view;
+        }
+        if (const auto value = parameters.value("width")) {
+            options.width = detail::parse_uint32(*value, "width");
+        }
+        if (const auto value = parameters.value("height")) {
+            options.height = detail::parse_uint32(*value, "height");
+        }
+        if (const auto value = parameters.value("steps")) {
+            options.steps = detail::parse_int32(*value, "steps");
+        }
+        if (const auto value = parameters.value("guidance")) {
+            options.guidance = detail::parse_float(*value, "guidance");
+        }
+        if (const auto value = parameters.value("seed")) {
+            options.seed = detail::parse_int64(*value, "seed");
+        }
+        if (const auto value = parameters.value("batch_count")) {
+            options.batch_count = detail::parse_int32(*value, "batch_count");
+            if (options.batch_count > 8) {
+                throw std::invalid_argument("batch_count cannot exceed 8");
+            }
+        }
+        if (const auto value = parameters.value("strength")) {
+            options.strength = detail::parse_float(*value, "strength");
+        }
+        if (const auto value = parameters.value("sampler")) {
+            options.sample_method = sample_method(*value);
+        }
+        if (const auto value = parameters.value("scheduler")) {
+            options.scheduler = scheduler(*value);
+        }
+        const uint64_t image_pixels = static_cast<uint64_t>(options.width) * options.height;
+        if (image_pixels > config_.max_output_pixels / static_cast<uint32_t>(options.batch_count)) {
+            throw std::invalid_argument("generation exceeds the configured output pixel limit");
+        }
+
+        const std::lock_guard<std::mutex> lock(model_mutex_);
+        std::unique_ptr<imagecpp::Model> model = load_diffusion_model();
+        const imagecpp::ImageResult result = imagecpp::generate(*model, options);
+        if (result.size() == 1 && parameters.value("response").value_or("json") == "image") {
+            check_output_limit(result.at(0));
+            detail::set_image(response, result.at(0), detail::response_format(request));
+            return;
+        }
+        detail::Json images = detail::Json::array();
+        for (size_t index = 0; index < result.size(); ++index) {
+            check_output_limit(result.at(index));
+            images.push_back(detail::encoded_image_json(result.at(index)));
+        }
+        detail::set_json(response, 200, {{"images", std::move(images)}});
+    }
+
+    void handle_upscale(const httplib::Request &request, httplib::Response &response) {
+        if (!require_model(response, config_.upscaler_model_path, "upscaler")) {
+            return;
+        }
+        try {
+            std::unique_ptr<imagecpp::Image> image = request_image(request, response);
+            if (!image) {
+                return;
+            }
+            uint32_t factor = 4;
+            if (const auto value = detail::request_value(request, "factor")) {
+                factor = detail::parse_uint32(*value, "factor");
+            }
+            check_scaled_output_limit(*image, factor);
+            const std::lock_guard<std::mutex> lock(model_mutex_);
+            imagecpp_upscaler_model_options load_options{};
+            imagecpp_upscaler_model_options_init(&load_options);
+            load_options.model_path = config_.upscaler_model_path.c_str();
+            load_options.threads = config_.threads;
+            load_options.device = config_.device;
+            load_options.tile_size = config_.upscaler_tile_size;
+            imagecpp::Model model(runtime_, load_options);
+            const imagecpp::ImageResult result = imagecpp::upscale(model, *image, factor);
+            if (result.size() == 0) {
+                throw std::runtime_error("upscaler returned no image");
+            }
+            check_output_limit(result.at(0));
+            if (detail::request_value(request, "response").value_or("image") == "json") {
+                detail::set_json(response, 200, {{"image", detail::encoded_image_json(result.at(0))}});
+            } else {
+                detail::set_image(response, result.at(0), detail::response_format(request));
             }
         } catch (const imagecpp::Error &error) {
             detail::set_library_error(response, error);

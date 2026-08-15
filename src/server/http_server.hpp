@@ -32,6 +32,9 @@ struct HttpServerConfig {
     std::string upscaler_model_path;
     int32_t threads = 0;
     int32_t upscaler_tile_size = 128;
+    bool diffusion_flash_attention = true;
+    bool keep_text_encoder_on_cpu = false;
+    bool keep_vae_on_cpu = false;
     imagecpp_device device = IMAGECPP_DEVICE_AUTO;
     uint32_t context_size = 4096;
 };
