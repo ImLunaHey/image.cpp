@@ -501,7 +501,11 @@ if(IMAGECPP_BUILD_HTTP_SERVER)
         target_link_libraries(imagecpp_httplib PUBLIC ws2_32)
     endif()
 
-    add_library(imagecpp_http_server STATIC src/server/http_server.cpp)
+    add_library(imagecpp_http_server STATIC
+        src/server/http_common.cpp
+        src/server/http_server.cpp
+        src/server/operation_api.cpp
+    )
     target_compile_features(imagecpp_http_server PRIVATE cxx_std_17)
     target_include_directories(imagecpp_http_server
         PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src

@@ -38,10 +38,18 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
     const httplib::Result health = client.Get("/healthz");
     const httplib::Result operations = client.Get("/v1/operations");
     const httplib::Result missing = client.Get("/does-not-exist");
+    const std::string resize_source = "P6\n2 2\n255\n\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
+    const httplib::Result resized =
+        client.Post("/v1/resize?width=3&height=4&filter=nearest", resize_source, "image/x-portable-pixmap");
+    const httplib::Result oversized = client.Post("/v1/resize?width=100000&height=100000", resize_source,
+                                                   "image/x-portable-pixmap");
     bool passed = health && health->status == 200 && health->body.find("\"status\":\"ok\"") != std::string::npos &&
                   operations && operations->status == 200 &&
                   operations->body.find("\"operations\"") != std::string::npos && missing && missing->status == 404 &&
-                  missing->body.find("not_found") != std::string::npos;
+                  missing->body.find("not_found") != std::string::npos && resized && resized->status == 200 &&
+                  resized->get_header_value("Content-Type") == "image/png" && resized->body.size() > 8 &&
+                  resized->body.compare(0, 8, "\x89PNG\r\n\x1a\n", 8) == 0 && oversized && oversized->status == 400 &&
+                  oversized->body.find("output pixel limit") != std::string::npos;
 
     if (image_bytes.empty()) {
         const httplib::Result unavailable = client.Post("/v1/caption", "image", "application/octet-stream");
@@ -81,6 +89,8 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         print_result("health", health);
         print_result("operations", operations);
         print_result("missing", missing);
+        print_result("resized", resized);
+        print_result("oversized", oversized);
     }
     return passed;
 }

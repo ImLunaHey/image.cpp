@@ -3,6 +3,7 @@
 #include "httplib.h"
 #include "imagecpp/imagecpp.hpp"
 #include "json.hpp"
+#include "server/operation_api.hpp"
 
 #include <cerrno>
 #include <charconv>
@@ -11,6 +12,7 @@
 #include <exception>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
@@ -259,6 +261,7 @@ class HttpServer::Impl final {
         }
         server_.set_payload_max_length(config_.max_upload_bytes);
         server_.set_default_headers({{"X-Content-Type-Options", "nosniff"}});
+        operation_api_ = std::make_unique<OperationApi>(runtime_, config_, model_mutex_);
         register_routes();
     }
 
@@ -293,7 +296,7 @@ class HttpServer::Impl final {
             set_json(response, 200,
                      {{"name", "image.cpp"},
                       {"version", imagecpp_version_string()},
-                      {"endpoints", {"/healthz", "/v1/operations", "/v1/caption", "/v1/ask"}}});
+                      {"endpoints", {"/healthz", "/v1/operations", "/v1/resize", "/v1/caption", "/v1/ask"}}});
         });
         server_.Get("/healthz", [this](const httplib::Request &, httplib::Response &response) {
             set_json(response, 200,
@@ -317,6 +320,7 @@ class HttpServer::Impl final {
         server_.Post("/v1/ask", [this](const httplib::Request &request, httplib::Response &response) {
             handle_visual_query(request, response, true);
         });
+        operation_api_->register_routes(server_);
         server_.set_error_handler([](const httplib::Request &, httplib::Response &response) {
             if (response.status == 404) {
                 set_error(response, 404, "not_found", "HTTP endpoint not found");
@@ -356,6 +360,7 @@ class HttpServer::Impl final {
                 return;
             }
             if (!query.stream) {
+                const std::lock_guard<std::mutex> lock(model_mutex_);
                 const imagecpp::TextInfo result = imagecpp::visual_query(*vlm_, *image, query.options).info();
                 set_json(response, 200, text_result_json(result));
                 return;
@@ -363,6 +368,7 @@ class HttpServer::Impl final {
 
             struct StreamState {
                 imagecpp::Model *model = nullptr;
+                std::mutex *model_mutex = nullptr;
                 std::shared_ptr<imagecpp::Image> image;
                 QueryInput query;
                 bool started = false;
@@ -370,6 +376,7 @@ class HttpServer::Impl final {
             };
             auto state = std::make_shared<StreamState>();
             state->model = vlm_.get();
+            state->model_mutex = &model_mutex_;
             state->image = std::move(image);
             state->query = std::move(query);
             state->query.options.prompt = state->query.prompt.empty() ? nullptr : state->query.prompt.c_str();
@@ -382,6 +389,7 @@ class HttpServer::Impl final {
                     }
                     state->started = true;
                     try {
+                        const std::lock_guard<std::mutex> lock(*state->model_mutex);
                         imagecpp::TextResult generated = imagecpp::visual_query_stream(
                             *state->model, *state->image, state->query.options, [&](std::string_view chunk) {
                                 state->pending_utf8.append(chunk.data(), chunk.size());
@@ -423,7 +431,9 @@ class HttpServer::Impl final {
 
     HttpServerConfig config_;
     imagecpp::Runtime runtime_;
+    std::mutex model_mutex_;
     std::unique_ptr<imagecpp::Model> vlm_;
+    std::unique_ptr<OperationApi> operation_api_;
     httplib::Server server_;
     int bound_port_ = -1;
 };

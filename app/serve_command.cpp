@@ -60,6 +60,13 @@ int serve_command(int argc, char **argv) {
                 throw std::runtime_error("upload limit is too large");
             }
             config.max_upload_bytes = static_cast<size_t>(megabytes) * bytes_per_megabyte;
+        } else if (option == "--max-output-mp") {
+            const uint64_t megapixels = positive_integer(next_value(argc, argv, index, option), "output pixel limit");
+            constexpr uint64_t pixels_per_megapixel = 1000U * 1000U;
+            if (megapixels > std::numeric_limits<uint64_t>::max() / pixels_per_megapixel) {
+                throw std::runtime_error("output pixel limit is too large");
+            }
+            config.max_output_pixels = megapixels * pixels_per_megapixel;
         } else if (option == "--vlm-model") {
             config.vlm_model_path = next_value(argc, argv, index, option);
         } else if (option == "--vlm-projection") {
@@ -100,6 +107,7 @@ void print_serve_command_usage(std::ostream &output) {
            << "  --host <address>       bind address (default: 127.0.0.1)\n"
            << "  --port <number>        HTTP port (default: 8080)\n"
            << "  --max-upload-mb <n>    maximum request size in MiB (default: 32)\n"
+           << "  --max-output-mp <n>    maximum output size in megapixels (default: 67)\n"
            << "  --vlm-model <path>     language-model GGUF for caption and VQA\n"
            << "  --vlm-projection <path> matching vision-projection GGUF\n"
            << "  --context <count>      VLM context tokens (default: 4096)\n"
