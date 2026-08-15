@@ -12,7 +12,8 @@ native PNG/JPEG/WebP/BMP/TGA codecs, promptable SAM 2/SAM 3/EdgeTAM
 segmentation, open-vocabulary SAM 3 detection and grounding, transparent
 background removal, diffusion generation and editing, Depth Anything 2/3
 estimation with optional camera pose, CLIP image/text embeddings and zero-shot
-classification, ESRGAN upscaling, and a typed segment-to-cutout workflow.
+classification, Tesseract OCR with document layout, ESRGAN upscaling, and a
+typed segment-to-cutout workflow.
 The typed workflows cover both coordinate-prompted and text-grounded asset
 extraction.
 See [the architecture](docs/architecture.md) for the
@@ -52,8 +53,9 @@ The model-backed composite is on by default. Use
 `-DIMAGECPP_WITH_SAM3=OFF` or `-DIMAGECPP_WITH_STABLE_DIFFUSION=OFF` for a
 smaller custom build; depth can be removed with
 `-DIMAGECPP_WITH_DEPTH_ANYTHING=OFF`, and CLIP with
-`-DIMAGECPP_WITH_CLIP=OFF`. All providers compile against one pinned GGML
-runtime.
+`-DIMAGECPP_WITH_CLIP=OFF`. Native OCR and its pinned Tesseract/Leptonica
+libraries can be removed with `-DIMAGECPP_WITH_TESSERACT=OFF`. Tensor providers
+compile against one pinned GGML runtime.
 
 The runtime is implemented in-process. Development-time conversion and parity
 tools may use reference implementations, but shipped inference will not invoke
@@ -72,6 +74,22 @@ Resize between common image formats; the output extension selects the encoder:
 ```sh
 ./build/imagecpp resize input.jpg output.webp 1024x1024 bilinear
 ```
+
+Download the checksum-pinned 4 MB English OCR model and extract text. Add
+`--json` for the full block/paragraph/line/word hierarchy with boxes,
+confidence, baselines, orientation, writing direction, and deskew metadata:
+
+```sh
+cmake --build build --target imagecpp_model_tesseract_eng
+./build/imagecpp ocr models/eng.traineddata scan.png
+./build/imagecpp ocr models/eng.traineddata scan.png --json > document.json
+```
+
+Page-layout hints are available through
+`--psm auto|column|block|line|word|sparse|raw-line`. The provider loads the
+exact `.traineddata` file into memory and performs all recognition in-process;
+install another Tesseract language file to recognize a different script or
+language.
 
 Download the validated 15 MB EdgeTAM model and run real point- or box-prompted
 segmentation:

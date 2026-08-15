@@ -16,10 +16,13 @@ int main(void) {
     imagecpp_detect_options_init(&detect_options);
     imagecpp_grounded_cutout_options grounded_options;
     imagecpp_grounded_cutout_options_init(&grounded_options);
+    imagecpp_ocr_options ocr_options;
+    imagecpp_ocr_options_init(&ocr_options);
     imagecpp_runtime_destroy(runtime);
     return operation_count == 0 || cutout_options.struct_size != sizeof(cutout_options) ||
                    detect_options.struct_size != sizeof(detect_options) ||
-                   grounded_options.struct_size != sizeof(grounded_options)
+                   grounded_options.struct_size != sizeof(grounded_options) ||
+                   ocr_options.struct_size != sizeof(ocr_options)
                ? 2
                : 0;
 }

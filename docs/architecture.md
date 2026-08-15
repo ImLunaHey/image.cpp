@@ -51,7 +51,7 @@ artifacts rather than unstructured JSON blobs:
 | Boxes | coordinates, coordinate space, labels, confidence |
 | Keypoints | coordinates, visibility/confidence, optional skeleton |
 | Depth map | dimensions, scalar type, relative/metric units, confidence |
-| Text regions | polygons/boxes, text, language, confidence |
+| Text regions | hierarchy, boxes, baselines, text, language, confidence, orientation |
 | Embedding | element type, dimensions, normalization, semantic space |
 | Metadata | namespaced typed properties and provenance |
 
@@ -144,6 +144,10 @@ The first useful release should provide one binary containing:
 5. generation and editing through an in-process native provider (implemented); and
 6. at least one typed workflow joining multiple operations (implemented:
    prompted segmentation -> crop -> optional upscale -> alpha cutout).
+
+Native OCR and document layout are also implemented through the Tesseract
+library API, with caller-owned image buffers and an in-memory traineddata
+model. No Tesseract helper executable is built or invoked.
 
 Foundation work lands first: correct image buffers, resize/crop/normalize,
 runtime introspection, errors, cancellation, tests, and packaging boundaries.

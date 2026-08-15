@@ -4,6 +4,50 @@ Model weights are external to the MIT-licensed `image.cpp` source tree. Each
 validated model has a pinned download, checksum, upstream provenance, and its
 own license.
 
+## Tesseract fast English
+
+The starter OCR model is the 4,113,088-byte `eng.traineddata` from the official
+[`tesseract-ocr/tessdata_fast`](https://github.com/tesseract-ocr/tessdata_fast)
+repository. Download and verify it with:
+
+```sh
+cmake --build build --target imagecpp_model_tesseract_eng
+```
+
+Its SHA-256 is
+`7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2`,
+and the pinned repository revision is
+`87416418657359cb625c412a48b6e1d6d41c29bd`. The traineddata files are
+Apache-2.0 licensed and remain separate from image.cpp's MIT-licensed source.
+
+Extract just the recognized UTF-8 text, or a structured document result:
+
+```sh
+./build/imagecpp ocr models/eng.traineddata scan.png
+./build/imagecpp ocr models/eng.traineddata scan.png --json > document.json
+```
+
+The JSON result retains the page text and every block, paragraph, line, and
+word in reading order. Each region includes its bounding box and normalized
+confidence; line regions add a baseline, while orientation, writing direction,
+text-line order, block type, and deskew are retained as document-layout
+metadata. Use `--psm` to supply a page-shape hint and `--preserve-spaces` for
+fixed-layout text.
+
+The native provider accepts grayscale, RGB, RGBA, and BGRA 8-bit images and
+composites alpha over white before recognition. It uses Tesseract's library API
+directly and initializes from the exact traineddata bytes, so it neither
+searches a machine-wide tessdata directory nor invokes the `tesseract` program.
+The filename stem supplies the language identifier: keep the official name
+(for example `eng.traineddata`, `deu.traineddata`, or `jpn.traineddata`) when
+using another language from `tessdata_fast`. One loaded model serializes calls
+because Tesseract reuses mutable recognition state.
+
+OCR confidence is a model estimate, not calibrated truth. Accuracy depends on
+resolution, font, script, page segmentation, skew, and image quality; evaluate
+representative scans and retain the returned boxes/confidences when downstream
+decisions matter.
+
 ## EdgeTAM Q4
 
 The starter segmentation model is `edgetam_q4_0.ggml` (15 MB). Download and
@@ -267,6 +311,7 @@ I/O:
 
 | Operation | Input | Time | Peak footprint |
 | --- | --- | ---: | ---: |
+| Tesseract fast English OCR | 928x176 grayscale text, cold | 0.05 s | 33 MB |
 | EdgeTAM background removal | 1800x1200 JPEG | 1.06 s warm | 495 MB |
 | EdgeTAM -> crop -> RealESRGAN x4 -> alpha | 64x64 PNG to 256x160 RGBA | 1.48 s | 493 MB |
 | SAM 3 Q4 text grounding | 512x512 PNG, `cat`, cold | 12.18 s | 1.63 GB |

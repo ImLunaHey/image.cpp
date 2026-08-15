@@ -17,10 +17,10 @@ A normal runtime build does not need Python.
 
 ## Get the starter models
 
-The starter bundle is about 217 MB and enables promptable segmentation,
+The starter bundle is about 221 MB and enables promptable segmentation,
 background removal, dense depth with optional camera pose, joint image/text
-embeddings, zero-shot classification, 4x upscaling, and a composed transparent
-cutout workflow:
+embeddings, zero-shot classification, OCR with document layout, 4x upscaling,
+and a composed transparent cutout workflow:
 
 ```sh
 cmake --build build --target imagecpp_models_starter
@@ -55,6 +55,9 @@ Given an `input.jpg`, try:
 
 ./build/imagecpp embed-image \
   models/clip-vit-b-32-laion2b-q4_0.gguf input.jpg > embedding.json
+
+./build/imagecpp ocr \
+  models/eng.traineddata input.jpg --json > document.json
 ```
 
 Prompt coordinates are image pixels. A positive point should be inside the
@@ -137,6 +140,23 @@ imagecpp::DepthResult result = imagecpp::depth(model, input, depth_options);
 imagecpp_depth_info info = result.info();
 const float *depth = static_cast<const float *>(info.depth.data);
 // depth remains valid until result is destroyed.
+```
+
+OCR uses another task-specific result while retaining the same model and image
+ownership rules:
+
+```cpp
+imagecpp_model_options ocr_model_options{};
+imagecpp_model_options_init(&ocr_model_options);
+ocr_model_options.model_path = "models/eng.traineddata";
+imagecpp::Model ocr_model(runtime, "image.ocr.tesseract", ocr_model_options);
+
+imagecpp_ocr_options ocr_options{};
+imagecpp_ocr_options_init(&ocr_options);
+imagecpp::OcrResult document = imagecpp::ocr(ocr_model, input, ocr_options);
+imagecpp::OcrInfo page = document.info();
+imagecpp::TextRegionInfo first_region = document.at(0);
+// page.text owns the copied UTF-8 page text; regions retain layout metadata.
 ```
 
 The same ownership model applies to semantic results:
