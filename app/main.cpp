@@ -4,6 +4,9 @@
 #include "model_commands.hpp"
 #include "ocr_command.hpp"
 #include "vlm_command.hpp"
+#if defined(IMAGECPP_BUILD_HTTP_SERVER)
+#include "serve_command.hpp"
+#endif
 
 #include <algorithm>
 #include <array>
@@ -41,6 +44,9 @@ void print_usage(std::ostream &output) {
            << "  imagecpp ocr <traineddata-model> <input-image> [OCR options]\n"
            << "  imagecpp caption <language-model> <projection-model> <input-image> [visual query options]\n"
            << "  imagecpp ask <language-model> <projection-model> <input-image> <question> [visual query options]\n"
+#if defined(IMAGECPP_BUILD_HTTP_SERVER)
+           << "  imagecpp serve [server options]\n"
+#endif
            << "\nprompt options:\n"
            << "  --point <x>,<y>        positive point (repeatable)\n"
            << "  --negative <x>,<y>     negative point (repeatable)\n"
@@ -57,6 +63,9 @@ void print_usage(std::ostream &output) {
     print_detect_command_usage(output);
     print_ocr_command_usage(output);
     print_vlm_command_usage(output);
+#if defined(IMAGECPP_BUILD_HTTP_SERVER)
+    print_serve_command_usage(output);
+#endif
 }
 
 uint32_t parse_size_part(const std::string &value, const char *name) {
@@ -508,6 +517,11 @@ int main(int argc, char **argv) {
         if (argc >= 2 && std::string(argv[1]) == "ask") {
             return ask_image_command(argc, argv);
         }
+#if defined(IMAGECPP_BUILD_HTTP_SERVER)
+        if (argc >= 2 && std::string(argv[1]) == "serve") {
+            return serve_command(argc, argv);
+        }
+#endif
         print_usage(argc == 1 ? std::cout : std::cerr);
         return argc == 1 ? 0 : 2;
     } catch (const std::exception &error) {
