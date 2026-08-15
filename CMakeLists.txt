@@ -11,6 +11,7 @@ include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
 option(IMAGECPP_BUILD_CLI "Build the imagecpp command-line tool" ON)
+option(IMAGECPP_BUILD_HTTP_SERVER "Build the native HTTP API into the imagecpp command-line tool" ON)
 option(IMAGECPP_BUILD_TESTS "Build image.cpp tests" OFF)
 option(IMAGECPP_BUILD_SHARED "Build libimagecpp as a shared library" OFF)
 option(IMAGECPP_WITH_WEBP "Build WebP decoding and encoding support" ON)
@@ -482,6 +483,38 @@ if(TARGET imagecpp_model_sam3_q4)
     add_dependencies(imagecpp_models_full imagecpp_model_sam3_q4)
 endif()
 
+if(IMAGECPP_BUILD_HTTP_SERVER)
+    find_package(Threads REQUIRED)
+    add_library(imagecpp_httplib STATIC
+        external/llama/vendor/cpp-httplib/httplib.cpp
+    )
+    target_compile_features(imagecpp_httplib PRIVATE cxx_std_17)
+    target_include_directories(imagecpp_httplib PUBLIC external/llama/vendor/cpp-httplib)
+    target_link_libraries(imagecpp_httplib PRIVATE Threads::Threads)
+    set_target_properties(imagecpp_httplib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(MSVC)
+        target_compile_options(imagecpp_httplib PRIVATE /w)
+    else()
+        target_compile_options(imagecpp_httplib PRIVATE -w)
+    endif()
+    if(WIN32)
+        target_link_libraries(imagecpp_httplib PUBLIC ws2_32)
+    endif()
+
+    add_library(imagecpp_http_server STATIC src/server/http_server.cpp)
+    target_compile_features(imagecpp_http_server PRIVATE cxx_std_17)
+    target_include_directories(imagecpp_http_server
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src
+        PRIVATE external/llama/vendor/nlohmann
+    )
+    target_link_libraries(imagecpp_http_server
+        PUBLIC imagecpp::imagecpp
+        PRIVATE imagecpp_httplib Threads::Threads
+    )
+    set_target_properties(imagecpp_http_server PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    imagecpp_enable_warnings(imagecpp_http_server)
+endif()
+
 if(IMAGECPP_BUILD_CLI)
     add_executable(imagecpp_cli
         app/depth_command.cpp
@@ -495,6 +528,10 @@ if(IMAGECPP_BUILD_CLI)
     target_link_libraries(imagecpp_cli PRIVATE imagecpp::imagecpp)
     imagecpp_enable_warnings(imagecpp_cli)
     set_target_properties(imagecpp_cli PROPERTIES OUTPUT_NAME imagecpp)
+    if(IMAGECPP_BUILD_HTTP_SERVER)
+        target_link_libraries(imagecpp_cli PRIVATE imagecpp_http_server)
+        target_compile_definitions(imagecpp_cli PRIVATE IMAGECPP_BUILD_HTTP_SERVER=1)
+    endif()
 endif()
 
 if(IMAGECPP_BUILD_TESTS)
@@ -518,6 +555,14 @@ if(IMAGECPP_BUILD_TESTS)
     imagecpp_enable_warnings(imagecpp_c_api_test)
     set_target_properties(imagecpp_c_api_test PROPERTIES LINKER_LANGUAGE CXX)
     add_test(NAME imagecpp.c-api COMMAND imagecpp_c_api_test)
+    if(IMAGECPP_BUILD_HTTP_SERVER)
+        add_executable(imagecpp_http_server_test tests/test_http_server.cpp)
+        target_compile_features(imagecpp_http_server_test PRIVATE cxx_std_17)
+        target_link_libraries(imagecpp_http_server_test PRIVATE imagecpp_http_server imagecpp_httplib)
+        imagecpp_enable_warnings(imagecpp_http_server_test)
+        add_test(NAME imagecpp.http-server COMMAND imagecpp_http_server_test)
+        set_tests_properties(imagecpp.http-server PROPERTIES TIMEOUT 30)
+    endif()
     if(IMAGECPP_WITH_TESSERACT AND IMAGECPP_TEST_OCR_MODEL)
         add_executable(imagecpp_ocr_c_api_test tests/test_ocr_c_api.c)
         target_link_libraries(imagecpp_ocr_c_api_test PRIVATE imagecpp::imagecpp)
@@ -869,6 +914,12 @@ install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES LICENSE THIRD_PARTY.md DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp)
 install(FILES external/stb/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME stb.txt)
 install(FILES external/libwebp/COPYING DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME libwebp.txt)
+if(IMAGECPP_BUILD_HTTP_SERVER)
+    install(FILES external/llama/vendor/cpp-httplib/LICENSE
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME cpp-httplib.txt)
+    install(FILES external/llama/licenses/LICENSE-jsonhpp
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME nlohmann-json.txt)
+endif()
 if(IMAGECPP_WITH_TESSERACT)
     install(FILES external/tesseract/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME tesseract.txt)
     install(FILES external/leptonica/leptonica-license.txt DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME leptonica.txt)
