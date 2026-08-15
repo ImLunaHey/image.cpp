@@ -2,6 +2,7 @@
 
 #include "httplib.h"
 
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -32,6 +33,28 @@ void print_result(const char *name, const httplib::Result &result) {
     std::cerr << '\n';
 }
 
+bool wait_for_job(httplib::Client &client, const std::string &location, httplib::Result &result,
+                  std::string &status_body) {
+    if (location.empty()) {
+        return false;
+    }
+    for (size_t attempt = 0; attempt < 400; ++attempt) {
+        const httplib::Result status = client.Get(location);
+        if (!status) {
+            return false;
+        }
+        status_body = status->body;
+        if (status_body.find("\"status\":\"completed\"") != std::string::npos ||
+            status_body.find("\"status\":\"failed\"") != std::string::npos ||
+            status_body.find("\"status\":\"cancelled\"") != std::string::npos) {
+            result = client.Get(location + "/result");
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return false;
+}
+
 bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &image_bytes) {
     config.port = 0;
     imagecpp::server::HttpServer server(std::move(config));
@@ -57,6 +80,18 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         client.Post("/v1/resize?width=3&height=4&filter=nearest", resize_source, "image/x-portable-pixmap");
     const httplib::Result oversized =
         client.Post("/v1/resize?width=100000&height=100000", resize_source, "image/x-portable-pixmap");
+    const httplib::Headers async_headers = {{"Prefer", "respond-async"}};
+    const httplib::Result submitted =
+        client.Post("/v1/resize?width=5&height=6", async_headers, resize_source, "image/x-portable-pixmap");
+    const std::string job_location = submitted ? submitted->get_header_value("Location") : "";
+    httplib::Result async_result;
+    std::string async_status;
+    const bool async_finished = wait_for_job(client, job_location, async_result, async_status);
+    const httplib::Result jobs = client.Get("/v1/jobs");
+    const httplib::Result missing_job = client.Get("/v1/jobs/job-does-not-exist");
+    const httplib::Headers async_stream_headers = {{"Prefer", "respond-async"}, {"Accept", "text/event-stream"}};
+    const httplib::Result async_stream =
+        client.Post("/v1/caption", async_stream_headers, resize_source, "image/x-portable-pixmap");
     bool passed =
         root && root->status == 200 && root->get_header_value("Content-Type").find("application/json") == 0 &&
         root->body.find("\"/playground\"") != std::string::npos && playground && playground->status == 200 &&
@@ -70,15 +105,24 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         playground_javascript->get_header_value("Content-Type").find("text/javascript") == 0 &&
         playground_javascript->body.find("/v1/remove-background") != std::string::npos && service_info &&
         service_info->status == 200 && service_info->body.find("\"name\":\"image.cpp\"") != std::string::npos &&
-        health && health->status == 200 && health->body.find("\"status\":\"ok\"") != std::string::npos && operations &&
-        models && models->status == 200 && models->body.find("\"capacity\":1") != std::string::npos &&
+        health && health->status == 200 && health->body.find("\"status\":\"ok\"") != std::string::npos &&
+        health->body.find("\"worker_count\":1") != std::string::npos && operations && models && models->status == 200 &&
+        models->body.find("\"capacity\":1") != std::string::npos &&
         models->body.find("\"loaded_families\":[]") != std::string::npos && cleared_models &&
         cleared_models->status == 200 && cleared_models->body.find("\"removed\":0") != std::string::npos &&
         operations->status == 200 && operations->body.find("\"operations\"") != std::string::npos && missing &&
         missing->status == 404 && missing->body.find("not_found") != std::string::npos && resized &&
         resized->status == 200 && resized->get_header_value("Content-Type") == "image/png" &&
         resized->body.size() > 8 && resized->body.compare(0, 8, "\x89PNG\r\n\x1a\n", 8) == 0 && oversized &&
-        oversized->status == 400 && oversized->body.find("output pixel limit") != std::string::npos;
+        oversized->status == 400 && oversized->body.find("output pixel limit") != std::string::npos && submitted &&
+        submitted->status == 202 && submitted->get_header_value("Preference-Applied") == "respond-async" &&
+        async_finished && async_result && async_result->status == 200 &&
+        async_result->get_header_value("Content-Type") == "image/png" &&
+        async_result->body.compare(0, 8, "\x89PNG\r\n\x1a\n", 8) == 0 &&
+        async_status.find("\"progress\":1.0") != std::string::npos && jobs && jobs->status == 200 &&
+        jobs->body.find("\"operation\":\"resize\"") != std::string::npos && missing_job && missing_job->status == 404 &&
+        async_stream && async_stream->status == 400 &&
+        async_stream->body.find("async_stream_unsupported") != std::string::npos;
 
     if (image_bytes.empty()) {
         const httplib::Result unavailable = client.Post("/v1/caption", "image", "application/octet-stream");
@@ -110,6 +154,13 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         const httplib::Headers stream_headers = {{"Accept", "text/event-stream"}};
         const httplib::Result stream = client.Post("/v1/ask", stream_headers, question);
         const httplib::Result invalid = client.Post("/v1/caption", "not an image", "application/octet-stream");
+        const httplib::Result submitted_caption =
+            client.Post("/v1/caption?temperature=0&max_tokens=8", async_headers, image_bytes, "image/png");
+        httplib::Result async_caption;
+        std::string async_caption_status;
+        const bool async_caption_finished =
+            wait_for_job(client, submitted_caption ? submitted_caption->get_header_value("Location") : "",
+                         async_caption, async_caption_status);
         passed = passed && health->body.find("\"vlm_loaded\":true") != std::string::npos && caption &&
                  caption->status == 200 && caption->body.find("\"text\"") != std::string::npos && answer &&
                  answer->status == 200 &&
@@ -117,12 +168,16 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
                  stream && stream->status == 200 && stream->body.find("event: delta") != std::string::npos &&
                  stream->body.find("event: done") != std::string::npos &&
                  (stream->body.find("cat") != std::string::npos || stream->body.find("Cat") != std::string::npos) &&
-                 invalid && (invalid->status == 400 || invalid->status == 415);
+                 invalid && (invalid->status == 400 || invalid->status == 415) && submitted_caption &&
+                 submitted_caption->status == 202 && async_caption_finished && async_caption &&
+                 async_caption->status == 200 && async_caption->body.find("\"text\"") != std::string::npos;
         if (!passed) {
             print_result("caption", caption);
             print_result("answer", answer);
             print_result("stream", stream);
             print_result("invalid", invalid);
+            print_result("submitted caption", submitted_caption);
+            print_result("async caption", async_caption);
         }
     }
 
@@ -142,6 +197,11 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         print_result("missing", missing);
         print_result("resized", resized);
         print_result("oversized", oversized);
+        print_result("submitted job", submitted);
+        print_result("async result", async_result);
+        print_result("jobs", jobs);
+        print_result("missing job", missing_job);
+        print_result("async stream", async_stream);
     }
     return passed;
 }

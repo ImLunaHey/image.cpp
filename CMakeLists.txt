@@ -504,6 +504,8 @@ if(IMAGECPP_BUILD_HTTP_SERVER)
     add_library(imagecpp_http_server STATIC
         src/server/http_common.cpp
         src/server/http_server.cpp
+        src/server/job_api.cpp
+        src/server/job_manager.cpp
         src/server/model_cache.cpp
         src/server/operation_api.cpp
         src/server/playground.cpp
@@ -590,6 +592,17 @@ if(IMAGECPP_BUILD_TESTS)
     set_target_properties(imagecpp_c_api_test PROPERTIES LINKER_LANGUAGE CXX)
     add_test(NAME imagecpp.c-api COMMAND imagecpp_c_api_test)
     if(IMAGECPP_BUILD_HTTP_SERVER)
+        add_executable(imagecpp_job_manager_test
+            tests/test_job_manager.cpp
+            src/server/job_manager.cpp
+        )
+        target_compile_features(imagecpp_job_manager_test PRIVATE cxx_std_17)
+        target_include_directories(imagecpp_job_manager_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_link_libraries(imagecpp_job_manager_test PRIVATE Threads::Threads)
+        imagecpp_enable_warnings(imagecpp_job_manager_test)
+        add_test(NAME imagecpp.job-manager COMMAND imagecpp_job_manager_test)
+        set_tests_properties(imagecpp.job-manager PROPERTIES TIMEOUT 15)
+
         add_executable(imagecpp_http_server_test tests/test_http_server.cpp)
         target_compile_features(imagecpp_http_server_test PRIVATE cxx_std_17)
         target_link_libraries(imagecpp_http_server_test PRIVATE imagecpp_http_server imagecpp_httplib)

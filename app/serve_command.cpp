@@ -88,6 +88,31 @@ int serve_command(int argc, char **argv) {
                 throw std::runtime_error("model cache size cannot exceed 64");
             }
             config.model_cache_size = static_cast<size_t>(size);
+        } else if (option == "--job-workers") {
+            const uint64_t count = positive_integer(next_value(argc, argv, index, option), "job worker count");
+            if (count > 16) {
+                throw std::runtime_error("job worker count cannot exceed 16");
+            }
+            config.job_worker_count = static_cast<size_t>(count);
+        } else if (option == "--job-queue") {
+            const uint64_t count = positive_integer(next_value(argc, argv, index, option), "job queue size");
+            if (count > 1024) {
+                throw std::runtime_error("job queue size cannot exceed 1024");
+            }
+            config.max_queued_jobs = static_cast<size_t>(count);
+        } else if (option == "--job-retain") {
+            const uint64_t count = positive_integer(next_value(argc, argv, index, option), "retained job count");
+            if (count > 1024) {
+                throw std::runtime_error("retained job count cannot exceed 1024");
+            }
+            config.max_retained_jobs = static_cast<size_t>(count);
+        } else if (option == "--job-ttl") {
+            const uint64_t seconds = positive_integer(next_value(argc, argv, index, option), "job retention time");
+            constexpr uint64_t maximum_retention_seconds = 7U * 24U * 60U * 60U;
+            if (seconds > maximum_retention_seconds) {
+                throw std::runtime_error("job retention time cannot exceed 604800 seconds");
+            }
+            config.job_retention_seconds = static_cast<uint32_t>(seconds);
         } else if (option == "--vlm-model") {
             config.vlm_model_path = next_value(argc, argv, index, option);
         } else if (option == "--vlm-projection") {
@@ -168,6 +193,10 @@ void print_serve_command_usage(std::ostream &output) {
            << "  --max-upload-mb <n>    maximum request size in MiB (default: 32)\n"
            << "  --max-output-mp <n>    maximum output size in megapixels (default: 67)\n"
            << "  --model-cache-size <n> retained non-VLM model families (default: 1; 0 disables)\n"
+           << "  --job-workers <n>      background job workers (default: 1; maximum: 16)\n"
+           << "  --job-queue <n>        maximum queued jobs (default: 16)\n"
+           << "  --job-retain <n>       retained terminal jobs (default: 64)\n"
+           << "  --job-ttl <seconds>    completed job retention time (default: 900)\n"
            << "  --vlm-model <path>     language-model GGUF for caption and VQA\n"
            << "  --vlm-projection <path> matching vision-projection GGUF\n"
            << "  --segment-model <path> SAM 2, SAM 3, or EdgeTAM segmentation model\n"

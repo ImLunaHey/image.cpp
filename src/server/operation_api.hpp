@@ -14,9 +14,11 @@ class Server;
 
 namespace imagecpp::server {
 
+class JobApi;
+
 class OperationApi final {
   public:
-    OperationApi(imagecpp::Runtime &runtime, const HttpServerConfig &config, std::mutex &model_mutex);
+    OperationApi(imagecpp::Runtime &runtime, const HttpServerConfig &config, std::mutex &model_mutex, JobApi &jobs);
     ~OperationApi();
 
     OperationApi(const OperationApi &) = delete;

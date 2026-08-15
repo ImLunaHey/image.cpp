@@ -3,11 +3,13 @@
 #include "httplib.h"
 #include "imagecpp/imagecpp.hpp"
 #include "json.hpp"
+#include "server/job_api.hpp"
 #include "server/operation_api.hpp"
 #include "server/playground.hpp"
 
 #include <cerrno>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
@@ -97,6 +99,16 @@ Json model_cache_json(const ModelCacheInfo &info) {
             {"evictions", info.evictions},
             {"clears", info.clears},
             {"loaded_families", info.loaded_families}};
+}
+
+Json job_manager_json(const JobManagerInfo &info) {
+    return {{"worker_count", info.worker_count},
+            {"max_queued_jobs", info.max_queued_jobs},
+            {"max_retained_jobs", info.max_retained_jobs},
+            {"retention_seconds", info.retention_seconds},
+            {"queued_jobs", info.queued_jobs},
+            {"running_jobs", info.running_jobs},
+            {"retained_jobs", info.retained_jobs}};
 }
 
 std::optional<std::string> request_value(const httplib::Request &request, const std::string &name) {
@@ -285,9 +297,17 @@ class HttpServer::Impl final {
         }
         server_.set_payload_max_length(config_.max_upload_bytes);
         server_.set_default_headers({{"X-Content-Type-Options", "nosniff"}});
-        operation_api_ = std::make_unique<OperationApi>(runtime_, config_, model_mutex_);
+        JobManagerConfig job_config;
+        job_config.worker_count = config_.job_worker_count;
+        job_config.max_queued_jobs = config_.max_queued_jobs;
+        job_config.max_retained_jobs = config_.max_retained_jobs;
+        job_config.retention_time = std::chrono::seconds(config_.job_retention_seconds);
+        job_api_ = std::make_unique<JobApi>(job_config);
+        operation_api_ = std::make_unique<OperationApi>(runtime_, config_, model_mutex_, *job_api_);
         register_routes();
     }
+
+    ~Impl() { job_api_->shutdown(); }
 
     int bind() {
         if (bound_port_ >= 0) {
@@ -320,12 +340,12 @@ class HttpServer::Impl final {
             set_json(response, 200,
                      {{"name", "image.cpp"},
                       {"version", imagecpp_version_string()},
-                      {"endpoints",
-                       {"/playground",  "/healthz",     "/v1/info",   "/v1/operations",  "/v1/resize",
-                        "/v1/models",   "/v1/ocr",      "/v1/depth",  "/v1/embed/image", "/v1/embed/text",
-                        "/v1/classify", "/v1/segment",  "/v1/detect", "/v1/cutout",      "/v1/remove-background",
-                        "/v1/extract",  "/v1/generate", "/v1/edit",   "/v1/upscale",     "/v1/caption",
-                        "/v1/ask"}}});
+                      {"endpoints", {"/playground", "/healthz",        "/v1/info",       "/v1/operations",
+                                     "/v1/resize",  "/v1/models",      "/v1/jobs",       "/v1/ocr",
+                                     "/v1/depth",   "/v1/embed/image", "/v1/embed/text", "/v1/classify",
+                                     "/v1/segment", "/v1/detect",      "/v1/cutout",     "/v1/remove-background",
+                                     "/v1/extract", "/v1/generate",    "/v1/edit",       "/v1/upscale",
+                                     "/v1/caption", "/v1/ask"}}});
         };
         server_.Get("/", [set_service_info](const httplib::Request &request, httplib::Response &response) {
             if (request.get_header_value("Accept").find("text/html") != std::string::npos) {
@@ -352,6 +372,7 @@ class HttpServer::Impl final {
                  {"version", imagecpp_version_string()},
                  {"vlm_loaded", vlm_ != nullptr},
                  {"model_cache", model_cache_json(operation_api_->model_cache_info())},
+                 {"jobs", job_manager_json(job_api_->info())},
                  {"configured_models",
                   {{"segment", !config_.segment_model_path.empty()},
                    {"detect", !config_.detect_model_path.empty()},
@@ -385,12 +406,17 @@ class HttpServer::Impl final {
             set_json(response, 200, {{"operations", std::move(operations)}});
         });
         server_.Post("/v1/caption", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_visual_query(request, response, false);
+            job_api_->dispatch("caption", request, response, [this](const auto &stored, auto &generated) {
+                handle_visual_query(stored, generated, false);
+            });
         });
         server_.Post("/v1/ask", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_visual_query(request, response, true);
+            job_api_->dispatch("ask", request, response, [this](const auto &stored, auto &generated) {
+                handle_visual_query(stored, generated, true);
+            });
         });
         operation_api_->register_routes(server_);
+        job_api_->register_routes(server_);
         server_.set_error_handler([](const httplib::Request &, httplib::Response &response) {
             if (response.status == 404) {
                 set_error(response, 404, "not_found", "HTTP endpoint not found");
@@ -502,6 +528,7 @@ class HttpServer::Impl final {
     imagecpp::Runtime runtime_;
     std::mutex model_mutex_;
     std::unique_ptr<imagecpp::Model> vlm_;
+    std::unique_ptr<JobApi> job_api_;
     std::unique_ptr<OperationApi> operation_api_;
     httplib::Server server_;
     int bound_port_ = -1;

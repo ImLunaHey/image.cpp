@@ -2,6 +2,7 @@
 
 #include "httplib.h"
 #include "server/http_common.hpp"
+#include "server/job_api.hpp"
 
 #include <algorithm>
 #include <array>
@@ -379,52 +380,40 @@ const char *nullable_path(const std::string &path) { return path.empty() ? nullp
 
 class OperationApi::Impl final {
   public:
-    Impl(imagecpp::Runtime &runtime, const HttpServerConfig &config, std::mutex &model_mutex)
-        : runtime_(runtime), config_(config), model_mutex_(model_mutex), model_cache_(config.model_cache_size) {}
+    Impl(imagecpp::Runtime &runtime, const HttpServerConfig &config, std::mutex &model_mutex, JobApi &jobs)
+        : runtime_(runtime), config_(config), model_mutex_(model_mutex), jobs_(jobs),
+          model_cache_(config.model_cache_size) {}
 
     void register_routes(httplib::Server &server) {
-        server.Post("/v1/resize", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_resize(request, response);
-        });
-        server.Post("/v1/ocr", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_ocr(request, response);
-        });
-        server.Post("/v1/depth", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_depth(request, response);
-        });
-        server.Post("/v1/embed/image", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_embed_image(request, response);
-        });
-        server.Post("/v1/embed/text", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_embed_text(request, response);
-        });
-        server.Post("/v1/classify", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_classify(request, response);
-        });
-        server.Post("/v1/segment", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_segment(request, response);
-        });
-        server.Post("/v1/detect", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_detect(request, response);
-        });
-        server.Post("/v1/cutout", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_cutout(request, response);
-        });
-        server.Post("/v1/remove-background", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_cutout(request, response);
-        });
-        server.Post("/v1/extract", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_extract(request, response);
-        });
-        server.Post("/v1/generate", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_generate(request, response, false);
-        });
-        server.Post("/v1/edit", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_generate(request, response, true);
-        });
-        server.Post("/v1/upscale", [this](const httplib::Request &request, httplib::Response &response) {
-            handle_upscale(request, response);
-        });
+        const auto post = [this, &server](const char *path, const char *operation, JobApi::Handler handler) {
+            server.Post(path, [this, operation = std::string(operation), handler = std::move(handler)](
+                                  const httplib::Request &request, httplib::Response &response) mutable {
+                jobs_.dispatch(operation, request, response, handler);
+            });
+        };
+        post("/v1/resize", "resize", [this](const auto &request, auto &response) { handle_resize(request, response); });
+        post("/v1/ocr", "ocr", [this](const auto &request, auto &response) { handle_ocr(request, response); });
+        post("/v1/depth", "depth", [this](const auto &request, auto &response) { handle_depth(request, response); });
+        post("/v1/embed/image", "embed-image",
+             [this](const auto &request, auto &response) { handle_embed_image(request, response); });
+        post("/v1/embed/text", "embed-text",
+             [this](const auto &request, auto &response) { handle_embed_text(request, response); });
+        post("/v1/classify", "classify",
+             [this](const auto &request, auto &response) { handle_classify(request, response); });
+        post("/v1/segment", "segment",
+             [this](const auto &request, auto &response) { handle_segment(request, response); });
+        post("/v1/detect", "detect", [this](const auto &request, auto &response) { handle_detect(request, response); });
+        post("/v1/cutout", "cutout", [this](const auto &request, auto &response) { handle_cutout(request, response); });
+        post("/v1/remove-background", "remove-background",
+             [this](const auto &request, auto &response) { handle_cutout(request, response); });
+        post("/v1/extract", "extract",
+             [this](const auto &request, auto &response) { handle_extract(request, response); });
+        post("/v1/generate", "generate",
+             [this](const auto &request, auto &response) { handle_generate(request, response, false); });
+        post("/v1/edit", "edit",
+             [this](const auto &request, auto &response) { handle_generate(request, response, true); });
+        post("/v1/upscale", "upscale",
+             [this](const auto &request, auto &response) { handle_upscale(request, response); });
     }
 
     ModelCacheInfo model_cache_info() const { return model_cache_.info(); }
@@ -1125,11 +1114,13 @@ class OperationApi::Impl final {
     imagecpp::Runtime &runtime_;
     const HttpServerConfig &config_;
     std::mutex &model_mutex_;
+    JobApi &jobs_;
     ModelCache model_cache_;
 };
 
-OperationApi::OperationApi(imagecpp::Runtime &runtime, const HttpServerConfig &config, std::mutex &model_mutex)
-    : implementation_(std::make_unique<Impl>(runtime, config, model_mutex)) {}
+OperationApi::OperationApi(imagecpp::Runtime &runtime, const HttpServerConfig &config, std::mutex &model_mutex,
+                           JobApi &jobs)
+    : implementation_(std::make_unique<Impl>(runtime, config, model_mutex, jobs)) {}
 
 OperationApi::~OperationApi() = default;
 
