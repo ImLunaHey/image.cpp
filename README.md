@@ -104,12 +104,15 @@ cmake --build build --target imagecpp_model_smolvlm_q8 imagecpp_model_smolvlm_mm
 ./build/imagecpp ask \
   models/SmolVLM-256M-Instruct-Q8_0.gguf \
   models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg \
-  "What is happening in this image?"
+  "What is happening in this image?" --stream
 ```
 
-Add `--json` for token counts and the generation finish reason. Both model
-components are loaded once through the typed C or C++ API; image encoding,
-prompt formatting, token sampling, and decoding all remain in-process.
+Add `--stream` for immediate generated fragments, or `--json` for token counts
+and the generation finish reason. The two output modes are intentionally
+exclusive. Both model components are loaded once through the typed C or C++
+API; image encoding, prompt formatting, token sampling, and decoding all
+remain in-process. The streaming APIs support cooperative cancellation and
+still return the complete text generated before cancellation.
 
 Download the validated 15 MB EdgeTAM model and run real point- or box-prompted
 segmentation:

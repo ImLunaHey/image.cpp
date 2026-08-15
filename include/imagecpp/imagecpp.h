@@ -220,7 +220,8 @@ typedef enum imagecpp_text_finish_reason {
 
 /* Streaming fragments are not NUL-terminated. Concatenating every fragment
    produces the UTF-8 text returned in the final result. Return nonzero to stop
-   generation and receive a result with IMAGECPP_TEXT_FINISH_CANCELLED. */
+   generation and receive a result with IMAGECPP_TEXT_FINISH_CANCELLED. The
+   callback runs synchronously and must not re-enter or destroy the model. */
 typedef int (*imagecpp_text_stream_callback)(const char *bytes, size_t byte_count, void *user_data);
 
 typedef struct imagecpp_visual_query_options {

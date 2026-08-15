@@ -154,8 +154,10 @@ model. No Tesseract helper executable is built or invoked.
 
 Native captioning and visual question answering are implemented through the
 pinned llama.cpp `libllama` and `libmtmd` libraries. The public boundary is a
-task-specific text result; llama.cpp examples, tools, server, subprocess, and
-video components are not built or invoked.
+task-specific text result with optional incremental callbacks and cooperative
+cancellation. This streaming boundary can feed a future native HTTP/SSE layer
+without coupling inference to the server. llama.cpp examples, tools, server,
+subprocess, and video components are not built or invoked.
 
 Foundation work lands first: correct image buffers, resize/crop/normalize,
 runtime introspection, errors, cancellation, tests, and packaging boundaries.

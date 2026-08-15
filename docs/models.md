@@ -44,14 +44,17 @@ Generate a default concise caption, override its prompt, or ask a question:
 ./build/imagecpp ask \
   models/SmolVLM-256M-Instruct-Q8_0.gguf \
   models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg \
-  "What animal is shown? Answer with one word." --temperature 0
+  "What animal is shown? Answer with one word." --temperature 0 --stream
 ```
 
 The loaded model serializes queries because its language context and KV cache
 are reused. CPU and supported GPU backends are selectable; `--gpu` requires a
 compiled backend capable of offload. `--context` bounds prompt plus generation,
 and `--max-tokens`, `--temperature`, `--top-k`, `--top-p`, and `--seed` control
-decoding. The provider accepts grayscale, RGB, RGBA, and BGRA 8-bit sRGB input.
+decoding. `--stream` emits fragments as decoding proceeds; `--json` instead
+returns the final text, token counts, and finish reason. The C callback may
+cancel generation without discarding the emitted prefix. The provider accepts
+grayscale, RGB, RGBA, and BGRA 8-bit sRGB input.
 
 SmolVLM 256M is intentionally small. Captions and answers can omit details,
 misread text, or hallucinate objects, and generation metadata is not a

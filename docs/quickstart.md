@@ -62,7 +62,7 @@ Given an `input.jpg`, try:
 
 ./build/imagecpp caption \
   models/SmolVLM-256M-Instruct-Q8_0.gguf \
-  models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg
+  models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg --stream
 
 ./build/imagecpp ask \
   models/SmolVLM-256M-Instruct-Q8_0.gguf \
@@ -189,6 +189,25 @@ imagecpp::TextResult answer = imagecpp::visual_query(vlm, input, query);
 imagecpp::TextInfo text = answer.info();
 // text owns a copied UTF-8 answer plus token metadata.
 ```
+
+Use the streaming overload when an interactive caller should receive text as
+soon as it is decoded. Returning `false` from the callback stops generation;
+the returned result contains the emitted prefix and reports
+`IMAGECPP_TEXT_FINISH_CANCELLED`:
+
+```cpp
+imagecpp::TextResult streamed = imagecpp::visual_query_stream(
+    vlm, input, query, [](std::string_view chunk) {
+        std::cout << chunk << std::flush;
+        return true;
+    });
+```
+
+The C ABI exposes the same behavior through
+`imagecpp_visual_query_stream`. Callback fragments carry an explicit byte
+count and are not NUL-terminated; concatenating them produces exactly the text
+owned by the final result. A callback must not re-enter the same model while a
+query is running.
 
 The same ownership model applies to semantic results:
 
