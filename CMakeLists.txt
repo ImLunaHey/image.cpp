@@ -109,6 +109,8 @@ if(IMAGECPP_WITH_TESSERACT)
     set(IMAGECPP_SAVED_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
     set(BUILD_SHARED_LIBS OFF)
     add_subdirectory(external/leptonica EXCLUDE_FROM_ALL)
+    target_sources(leptonica PRIVATE src/provider/leptonica_no_subprocess.c)
+    target_compile_definitions(leptonica PRIVATE system=imagecpp_leptonica_system_disabled)
 
     set(IMAGECPP_LEPTONICA_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/leptonica")
     set(IMAGECPP_LEPTONICA_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/external/leptonica")
@@ -136,7 +138,11 @@ if(IMAGECPP_WITH_TESSERACT)
     set(INSTALL_CONFIGS OFF CACHE BOOL "" FORCE)
     set(ENABLE_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
     set(ENABLE_CCACHE OFF CACHE BOOL "" FORCE)
+    set(IMAGECPP_SAVED_CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH})
+    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/tesseract")
     add_subdirectory(external/tesseract EXCLUDE_FROM_ALL)
+    set(CMAKE_MODULE_PATH ${IMAGECPP_SAVED_CMAKE_MODULE_PATH})
+    unset(IMAGECPP_SAVED_CMAKE_MODULE_PATH)
     set(CMAKE_SKIP_INSTALL_RULES ${IMAGECPP_SAVED_SKIP_INSTALL_RULES})
     unset(IMAGECPP_SAVED_SKIP_INSTALL_RULES)
     set(BUILD_SHARED_LIBS ${IMAGECPP_SAVED_BUILD_SHARED_LIBS})
@@ -147,6 +153,9 @@ if(IMAGECPP_WITH_TESSERACT)
         C_VISIBILITY_PRESET hidden
         CXX_VISIBILITY_PRESET hidden
         VISIBILITY_INLINES_HIDDEN YES
+    )
+    target_include_directories(libtesseract BEFORE PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/external/tesseract"
     )
     target_compile_definitions(libtesseract PRIVATE TESSERACT_DISABLE_DEBUG_FONTS=1)
     target_compile_definitions(leptonica PRIVATE MINIMUM_SEVERITY=5)
