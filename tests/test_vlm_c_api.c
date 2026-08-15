@@ -2,6 +2,25 @@
 
 #include <string.h>
 
+typedef struct stream_state {
+    char text[256];
+    size_t size;
+    size_t chunks;
+    size_t cancel_after;
+} stream_state;
+
+static int collect_text(const char *bytes, size_t byte_count, void *user_data) {
+    stream_state *state = (stream_state *)user_data;
+    if (byte_count > sizeof(state->text) - state->size - 1) {
+        return 1;
+    }
+    memcpy(state->text + state->size, bytes, byte_count);
+    state->size += byte_count;
+    state->text[state->size] = '\0';
+    ++state->chunks;
+    return state->cancel_after != 0 && state->chunks >= state->cancel_after;
+}
+
 int main(void) {
     imagecpp_error error = {0};
     imagecpp_runtime *runtime = NULL;
@@ -44,6 +63,32 @@ int main(void) {
         goto cleanup;
     }
     if (strstr(info.text, "cat") == NULL && strstr(info.text, "Cat") == NULL) {
+        goto cleanup;
+    }
+
+    imagecpp_text_result_destroy(result);
+    result = NULL;
+    stream_state streamed = {{0}, 0, 0, 0};
+    if (imagecpp_visual_query_stream(model, &view, &query, collect_text, &streamed, &result, &error) !=
+        IMAGECPP_STATUS_OK) {
+        goto cleanup;
+    }
+    info.struct_size = sizeof(info);
+    if (imagecpp_text_result_info(result, &info, &error) != IMAGECPP_STATUS_OK || streamed.chunks == 0 ||
+        strcmp(streamed.text, info.text) != 0 || info.finish_reason == IMAGECPP_TEXT_FINISH_CANCELLED) {
+        goto cleanup;
+    }
+
+    imagecpp_text_result_destroy(result);
+    result = NULL;
+    stream_state cancelled = {{0}, 0, 0, 1};
+    if (imagecpp_visual_query_stream(model, &view, &query, collect_text, &cancelled, &result, &error) !=
+        IMAGECPP_STATUS_OK) {
+        goto cleanup;
+    }
+    info.struct_size = sizeof(info);
+    if (imagecpp_text_result_info(result, &info, &error) != IMAGECPP_STATUS_OK || cancelled.chunks != 1 ||
+        strcmp(cancelled.text, info.text) != 0 || info.finish_reason != IMAGECPP_TEXT_FINISH_CANCELLED) {
         goto cleanup;
     }
     exit_code = 0;

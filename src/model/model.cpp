@@ -354,7 +354,8 @@ OcrOutput Model::ocr(const imagecpp_const_image_view &, const OcrRequest &) {
     throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support OCR");
 }
 
-TextOutput Model::visual_query(const imagecpp_const_image_view &, const VisualQueryRequest &) {
+TextOutput Model::visual_query(const imagecpp_const_image_view &, const VisualQueryRequest &,
+                               imagecpp_text_stream_callback, void *) {
     throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support visual text generation");
 }
 } // namespace imagecpp::detail
@@ -1003,9 +1004,10 @@ void imagecpp_visual_query_options_init(imagecpp_visual_query_options *options) 
     }
 }
 
-imagecpp_status imagecpp_visual_query(const imagecpp_model *model, const imagecpp_const_image_view *image,
-                                      const imagecpp_visual_query_options *options, imagecpp_text_result **output,
-                                      imagecpp_error *error) {
+static imagecpp_status visual_query_impl(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                         const imagecpp_visual_query_options *options,
+                                         imagecpp_text_stream_callback callback, void *user_data,
+                                         imagecpp_text_result **output, imagecpp_error *error) {
     if (output == nullptr) {
         return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output text result pointer is null");
     }
@@ -1021,7 +1023,7 @@ imagecpp_status imagecpp_visual_query(const imagecpp_model *model, const imagecp
     try {
         const imagecpp::detail::VisualQueryRequest request = imagecpp::detail::visual_query_request(options);
         auto result = std::make_unique<imagecpp_text_result>();
-        result->output = model->implementation->visual_query(*image, request);
+        result->output = model->implementation->visual_query(*image, request, callback, user_data);
         if (result->output.text.empty()) {
             throw imagecpp::detail::Failure(IMAGECPP_STATUS_MODEL_ERROR, "visual query returned no text");
         }
@@ -1032,6 +1034,22 @@ imagecpp_status imagecpp_visual_query(const imagecpp_model *model, const imagecp
     } catch (...) {
         return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected visual query failure");
     }
+}
+
+imagecpp_status imagecpp_visual_query(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                      const imagecpp_visual_query_options *options, imagecpp_text_result **output,
+                                      imagecpp_error *error) {
+    return visual_query_impl(model, image, options, nullptr, nullptr, output, error);
+}
+
+imagecpp_status imagecpp_visual_query_stream(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                             const imagecpp_visual_query_options *options,
+                                             imagecpp_text_stream_callback callback, void *user_data,
+                                             imagecpp_text_result **output, imagecpp_error *error) {
+    if (callback == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "text stream callback is null");
+    }
+    return visual_query_impl(model, image, options, callback, user_data, output, error);
 }
 
 imagecpp_status imagecpp_text_result_info(const imagecpp_text_result *result, imagecpp_text_info *output,

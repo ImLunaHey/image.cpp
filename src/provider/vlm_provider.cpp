@@ -216,7 +216,8 @@ class VlmModel final : public Model {
         (void)format_prompt(model_.get(), "Describe this image.");
     }
 
-    TextOutput visual_query(const imagecpp_const_image_view &image, const VisualQueryRequest &request) override {
+    TextOutput visual_query(const imagecpp_const_image_view &image, const VisualQueryRequest &request,
+                            imagecpp_text_stream_callback callback, void *user_data) override {
         std::lock_guard<std::mutex> lock(mutex_);
         llama_memory_clear(llama_get_memory(context_.get()), true);
 
@@ -270,6 +271,8 @@ class VlmModel final : public Model {
         const llama_vocab *vocab = llama_model_get_vocab(model_.get());
         Batch batch;
         output.finish_reason = IMAGECPP_TEXT_FINISH_LENGTH;
+        std::string pending_stream_text;
+        bool stream_started = false;
         for (uint32_t index = 0; index < request.max_tokens; ++index) {
             const llama_token token = llama_sampler_sample(sampler.get(), context_.get(), -1);
             llama_sampler_accept(sampler.get(), token);
@@ -277,8 +280,30 @@ class VlmModel final : public Model {
                 output.finish_reason = IMAGECPP_TEXT_FINISH_END_OF_GENERATION;
                 break;
             }
-            output.text += token_piece(vocab, token);
+            const std::string piece = token_piece(vocab, token);
+            output.text += piece;
             ++output.generated_tokens;
+            if (callback != nullptr) {
+                pending_stream_text += piece;
+                if (!stream_started) {
+                    const size_t first = pending_stream_text.find_first_not_of(" \t\n\r\f\v");
+                    if (first == std::string::npos) {
+                        pending_stream_text.clear();
+                    } else {
+                        pending_stream_text.erase(0, first);
+                        stream_started = true;
+                    }
+                }
+                const size_t last = pending_stream_text.find_last_not_of(" \t\n\r\f\v");
+                if (last != std::string::npos) {
+                    const size_t emitted_size = last + 1;
+                    if (callback(pending_stream_text.data(), emitted_size, user_data) != 0) {
+                        output.finish_reason = IMAGECPP_TEXT_FINISH_CANCELLED;
+                        break;
+                    }
+                    pending_stream_text.erase(0, emitted_size);
+                }
+            }
             if (index + 1 == request.max_tokens) {
                 break;
             }

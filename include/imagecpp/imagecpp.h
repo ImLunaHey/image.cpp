@@ -214,8 +214,14 @@ typedef struct imagecpp_vlm_model_options {
 
 typedef enum imagecpp_text_finish_reason {
     IMAGECPP_TEXT_FINISH_END_OF_GENERATION = 0,
-    IMAGECPP_TEXT_FINISH_LENGTH = 1
+    IMAGECPP_TEXT_FINISH_LENGTH = 1,
+    IMAGECPP_TEXT_FINISH_CANCELLED = 2
 } imagecpp_text_finish_reason;
+
+/* Streaming fragments are not NUL-terminated. Concatenating every fragment
+   produces the UTF-8 text returned in the final result. Return nonzero to stop
+   generation and receive a result with IMAGECPP_TEXT_FINISH_CANCELLED. */
+typedef int (*imagecpp_text_stream_callback)(const char *bytes, size_t byte_count, void *user_data);
 
 typedef struct imagecpp_visual_query_options {
     size_t struct_size;
@@ -622,6 +628,9 @@ IMAGECPP_API void imagecpp_visual_query_options_init(imagecpp_visual_query_optio
 IMAGECPP_API imagecpp_status imagecpp_visual_query(const imagecpp_model *model, const imagecpp_const_image_view *image,
                                                    const imagecpp_visual_query_options *options,
                                                    imagecpp_text_result **output, imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_visual_query_stream(
+    const imagecpp_model *model, const imagecpp_const_image_view *image, const imagecpp_visual_query_options *options,
+    imagecpp_text_stream_callback callback, void *user_data, imagecpp_text_result **output, imagecpp_error *error);
 IMAGECPP_API imagecpp_status imagecpp_text_result_info(const imagecpp_text_result *result, imagecpp_text_info *output,
                                                        imagecpp_error *error);
 IMAGECPP_API void imagecpp_text_result_destroy(imagecpp_text_result *result);

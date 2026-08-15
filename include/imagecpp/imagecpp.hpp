@@ -3,8 +3,11 @@
 
 #include "imagecpp/imagecpp.h"
 
+#include <exception>
+#include <functional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -320,6 +323,9 @@ class TextResult final {
     explicit TextResult(imagecpp_text_result *handle) noexcept : handle_(handle) {}
     friend TextResult visual_query(const Model &, const imagecpp_const_image_view &,
                                    const imagecpp_visual_query_options &);
+    friend TextResult visual_query_stream(const Model &, const imagecpp_const_image_view &,
+                                          const imagecpp_visual_query_options &,
+                                          const std::function<bool(std::string_view)> &);
     imagecpp_text_result *handle_ = nullptr;
 };
 
@@ -333,6 +339,40 @@ inline TextResult visual_query(const Model &model, const imagecpp_const_image_vi
 
 inline TextResult visual_query(const Model &model, const Image &image, const imagecpp_visual_query_options &options) {
     return visual_query(model, image.view(), options);
+}
+
+inline TextResult visual_query_stream(const Model &model, const imagecpp_const_image_view &image,
+                                      const imagecpp_visual_query_options &options,
+                                      const std::function<bool(std::string_view)> &callback) {
+    struct CallbackState {
+        const std::function<bool(std::string_view)> *callback = nullptr;
+        std::exception_ptr exception;
+    } state{&callback, nullptr};
+    const auto bridge = [](const char *bytes, size_t byte_count, void *user_data) noexcept -> int {
+        auto *callback_state = static_cast<CallbackState *>(user_data);
+        try {
+            return (*callback_state->callback)(std::string_view(bytes, byte_count)) ? 0 : 1;
+        } catch (...) {
+            callback_state->exception = std::current_exception();
+            return 1;
+        }
+    };
+    imagecpp_text_result *result = nullptr;
+    imagecpp_error error{};
+    const imagecpp_status status =
+        imagecpp_visual_query_stream(model.get(), &image, &options, bridge, &state, &result, &error);
+    if (state.exception) {
+        imagecpp_text_result_destroy(result);
+        std::rethrow_exception(state.exception);
+    }
+    check(status, error);
+    return TextResult(result);
+}
+
+inline TextResult visual_query_stream(const Model &model, const Image &image,
+                                      const imagecpp_visual_query_options &options,
+                                      const std::function<bool(std::string_view)> &callback) {
+    return visual_query_stream(model, image.view(), options, callback);
 }
 
 class EmbeddingResult final {

@@ -163,7 +163,8 @@ class Model {
     virtual std::vector<ClassificationOutput> classify(const imagecpp_const_image_view &image,
                                                        const std::vector<std::string> &labels);
     virtual OcrOutput ocr(const imagecpp_const_image_view &image, const OcrRequest &request);
-    virtual TextOutput visual_query(const imagecpp_const_image_view &image, const VisualQueryRequest &request);
+    virtual TextOutput visual_query(const imagecpp_const_image_view &image, const VisualQueryRequest &request,
+                                    imagecpp_text_stream_callback callback, void *user_data);
 };
 
 #if defined(IMAGECPP_WITH_CLIP)

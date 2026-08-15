@@ -31,7 +31,7 @@ int main(void) {
     imagecpp_visual_query_options visual_options;
     imagecpp_visual_query_options_init(&visual_options);
     if (visual_options.struct_size != sizeof(visual_options) || visual_options.max_tokens != 128 ||
-        visual_options.top_k != 40) {
+        visual_options.top_k != 40 || IMAGECPP_TEXT_FINISH_CANCELLED != 2) {
         return 14;
     }
     imagecpp_ocr_options ocr_options;
