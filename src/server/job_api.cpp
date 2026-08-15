@@ -153,9 +153,14 @@ void JobApi::dispatch(const std::string &operation, const httplib::Request &requ
 void JobApi::register_routes(httplib::Server &server) {
     server.Get("/v1/jobs", [this](const httplib::Request &request, httplib::Response &response) {
         size_t limit = 50;
-        if (request.has_param("limit")) {
-            limit = detail::parse_uint32(request.get_param_value("limit"), "limit");
-            limit = std::min<size_t>(limit, 100);
+        try {
+            if (request.has_param("limit")) {
+                limit = detail::parse_uint32(request.get_param_value("limit"), "limit");
+                limit = std::min<size_t>(limit, 100);
+            }
+        } catch (const std::invalid_argument &error) {
+            detail::set_error(response, 400, "invalid_request", error.what());
+            return;
         }
         Json jobs = Json::array();
         for (const JobSnapshot &snapshot : manager_.list(limit)) {

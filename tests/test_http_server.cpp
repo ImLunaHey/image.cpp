@@ -88,6 +88,7 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
     std::string async_status;
     const bool async_finished = wait_for_job(client, job_location, async_result, async_status);
     const httplib::Result jobs = client.Get("/v1/jobs");
+    const httplib::Result invalid_jobs = client.Get("/v1/jobs?limit=not-a-number");
     const httplib::Result missing_job = client.Get("/v1/jobs/job-does-not-exist");
     const httplib::Headers async_stream_headers = {{"Prefer", "respond-async"}, {"Accept", "text/event-stream"}};
     const httplib::Result async_stream =
@@ -122,8 +123,9 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         async_result->get_header_value("Content-Type") == "image/png" &&
         async_result->body.compare(0, 8, "\x89PNG\r\n\x1a\n", 8) == 0 &&
         async_status.find("\"progress\":1.0") != std::string::npos && jobs && jobs->status == 200 &&
-        jobs->body.find("\"operation\":\"resize\"") != std::string::npos && missing_job && missing_job->status == 404 &&
-        async_stream && async_stream->status == 400 &&
+        jobs->body.find("\"operation\":\"resize\"") != std::string::npos && invalid_jobs &&
+        invalid_jobs->status == 400 && invalid_jobs->body.find("invalid_request") != std::string::npos && missing_job &&
+        missing_job->status == 404 && async_stream && async_stream->status == 400 &&
         async_stream->body.find("async_stream_unsupported") != std::string::npos;
 
     if (image_bytes.empty()) {
