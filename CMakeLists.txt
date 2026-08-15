@@ -505,6 +505,7 @@ if(IMAGECPP_BUILD_HTTP_SERVER)
         src/server/http_common.cpp
         src/server/http_server.cpp
         src/server/operation_api.cpp
+        src/server/playground.cpp
     )
     target_compile_features(imagecpp_http_server PRIVATE cxx_std_17)
     target_include_directories(imagecpp_http_server

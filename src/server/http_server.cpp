@@ -4,6 +4,7 @@
 #include "imagecpp/imagecpp.hpp"
 #include "json.hpp"
 #include "server/operation_api.hpp"
+#include "server/playground.hpp"
 
 #include <cerrno>
 #include <charconv>
@@ -30,6 +31,19 @@ void set_json(httplib::Response &response, int status, const Json &body) {
 
 void set_error(httplib::Response &response, int status, const std::string &code, const std::string &message) {
     set_json(response, status, {{"error", {{"code", code}, {"message", message}}}});
+}
+
+void set_web_content(httplib::Response &response, std::string_view content, const char *content_type) {
+    response.set_header("Cache-Control", "no-cache");
+    response.set_content(content.data(), content.size(), content_type);
+}
+
+void set_playground(httplib::Response &response) {
+    response.set_header("Content-Security-Policy",
+                        "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; "
+                        "connect-src 'self'; object-src 'none'; base-uri 'none'");
+    response.set_header("Referrer-Policy", "no-referrer");
+    set_web_content(response, playground_html(), "text/html; charset=utf-8");
 }
 
 const char *finish_reason_name(imagecpp_text_finish_reason reason) {
@@ -292,15 +306,33 @@ class HttpServer::Impl final {
 
   private:
     void register_routes() {
-        server_.Get("/", [](const httplib::Request &, httplib::Response &response) {
-            set_json(
-                response, 200,
-                {{"name", "image.cpp"},
-                 {"version", imagecpp_version_string()},
-                 {"endpoints",
-                  {"/healthz", "/v1/operations", "/v1/resize", "/v1/ocr", "/v1/depth", "/v1/embed/image",
-                   "/v1/embed/text", "/v1/classify", "/v1/segment", "/v1/detect", "/v1/cutout", "/v1/remove-background",
-                   "/v1/extract", "/v1/generate", "/v1/edit", "/v1/upscale", "/v1/caption", "/v1/ask"}}});
+        const auto set_service_info = [](httplib::Response &response) {
+            set_json(response, 200,
+                     {{"name", "image.cpp"},
+                      {"version", imagecpp_version_string()},
+                      {"endpoints",
+                       {"/playground",  "/healthz",   "/v1/info",        "/v1/operations",        "/v1/resize",
+                        "/v1/ocr",      "/v1/depth",  "/v1/embed/image", "/v1/embed/text",        "/v1/classify",
+                        "/v1/segment",  "/v1/detect", "/v1/cutout",      "/v1/remove-background", "/v1/extract",
+                        "/v1/generate", "/v1/edit",   "/v1/upscale",     "/v1/caption",           "/v1/ask"}}});
+        };
+        server_.Get("/", [set_service_info](const httplib::Request &request, httplib::Response &response) {
+            if (request.get_header_value("Accept").find("text/html") != std::string::npos) {
+                set_playground(response);
+                return;
+            }
+            set_service_info(response);
+        });
+        server_.Get("/playground",
+                    [](const httplib::Request &, httplib::Response &response) { set_playground(response); });
+        server_.Get("/assets/playground.css", [](const httplib::Request &, httplib::Response &response) {
+            set_web_content(response, playground_css(), "text/css; charset=utf-8");
+        });
+        server_.Get("/assets/playground.js", [](const httplib::Request &, httplib::Response &response) {
+            set_web_content(response, playground_javascript(), "text/javascript; charset=utf-8");
+        });
+        server_.Get("/v1/info", [set_service_info](const httplib::Request &, httplib::Response &response) {
+            set_service_info(response);
         });
         server_.Get("/healthz", [this](const httplib::Request &, httplib::Response &response) {
             set_json(

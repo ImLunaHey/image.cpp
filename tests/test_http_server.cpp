@@ -40,6 +40,13 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
     server.wait_until_ready();
 
     httplib::Client client("127.0.0.1", port);
+    const httplib::Result root = client.Get("/");
+    const httplib::Headers browser_headers = {{"Accept", "text/html,application/xhtml+xml"}};
+    const httplib::Result playground = client.Get("/", browser_headers);
+    const httplib::Result playground_direct = client.Get("/playground");
+    const httplib::Result playground_css = client.Get("/assets/playground.css");
+    const httplib::Result playground_javascript = client.Get("/assets/playground.js");
+    const httplib::Result service_info = client.Get("/v1/info");
     const httplib::Result health = client.Get("/healthz");
     const httplib::Result operations = client.Get("/v1/operations");
     const httplib::Result missing = client.Get("/does-not-exist");
@@ -48,13 +55,25 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         client.Post("/v1/resize?width=3&height=4&filter=nearest", resize_source, "image/x-portable-pixmap");
     const httplib::Result oversized =
         client.Post("/v1/resize?width=100000&height=100000", resize_source, "image/x-portable-pixmap");
-    bool passed = health && health->status == 200 && health->body.find("\"status\":\"ok\"") != std::string::npos &&
-                  operations && operations->status == 200 &&
-                  operations->body.find("\"operations\"") != std::string::npos && missing && missing->status == 404 &&
-                  missing->body.find("not_found") != std::string::npos && resized && resized->status == 200 &&
-                  resized->get_header_value("Content-Type") == "image/png" && resized->body.size() > 8 &&
-                  resized->body.compare(0, 8, "\x89PNG\r\n\x1a\n", 8) == 0 && oversized && oversized->status == 400 &&
-                  oversized->body.find("output pixel limit") != std::string::npos;
+    bool passed =
+        root && root->status == 200 && root->get_header_value("Content-Type").find("application/json") == 0 &&
+        root->body.find("\"/playground\"") != std::string::npos && playground && playground->status == 200 &&
+        playground->get_header_value("Content-Type").find("text/html") == 0 &&
+        playground->get_header_value("Content-Security-Policy").find("default-src 'self'") != std::string::npos &&
+        playground->body.find("image.cpp studio") != std::string::npos && playground_direct &&
+        playground_direct->status == 200 && playground_css && playground_css->status == 200 &&
+        playground_css->get_header_value("Content-Type").find("text/css") == 0 &&
+        playground_css->body.find("--acid: #c9ff43") != std::string::npos && playground_javascript &&
+        playground_javascript->status == 200 &&
+        playground_javascript->get_header_value("Content-Type").find("text/javascript") == 0 &&
+        playground_javascript->body.find("/v1/remove-background") != std::string::npos && service_info &&
+        service_info->status == 200 && service_info->body.find("\"name\":\"image.cpp\"") != std::string::npos &&
+        health && health->status == 200 && health->body.find("\"status\":\"ok\"") != std::string::npos && operations &&
+        operations->status == 200 && operations->body.find("\"operations\"") != std::string::npos && missing &&
+        missing->status == 404 && missing->body.find("not_found") != std::string::npos && resized &&
+        resized->status == 200 && resized->get_header_value("Content-Type") == "image/png" &&
+        resized->body.size() > 8 && resized->body.compare(0, 8, "\x89PNG\r\n\x1a\n", 8) == 0 && oversized &&
+        oversized->status == 400 && oversized->body.find("output pixel limit") != std::string::npos;
 
     if (image_bytes.empty()) {
         const httplib::Result unavailable = client.Post("/v1/caption", "image", "application/octet-stream");
@@ -105,6 +124,12 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
     server.stop();
     listener.join();
     if (!passed) {
+        print_result("root", root);
+        print_result("playground", playground);
+        print_result("playground direct", playground_direct);
+        print_result("playground CSS", playground_css);
+        print_result("playground JavaScript", playground_javascript);
+        print_result("service info", service_info);
         print_result("health", health);
         print_result("operations", operations);
         print_result("missing", missing);
