@@ -521,7 +521,8 @@ class OperationApi::Impl final {
             }
 
             const std::lock_guard<std::mutex> lock(model_mutex_);
-            const imagecpp_model_options load_options = model_options(config_, config_.ocr_model_path);
+            imagecpp_model_options load_options = model_options(config_, config_.ocr_model_path);
+            load_options.device = IMAGECPP_DEVICE_CPU;
             imagecpp::Model model(runtime_, "image.ocr.tesseract", load_options);
             const imagecpp::OcrResult result = imagecpp::ocr(model, *image, options);
             const imagecpp::OcrInfo info = result.info();

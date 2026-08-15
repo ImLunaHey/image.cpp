@@ -10,7 +10,7 @@ Only configure the model families the process should expose:
 
 ```sh
 ./build/imagecpp serve \
-  --host 127.0.0.1 --port 8080 --gpu \
+  --host 127.0.0.1 --port 8080 \
   --vlm-model models/SmolVLM-256M-Instruct-Q8_0.gguf \
   --vlm-projection models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf \
   --segment-model models/edgetam_q4_0.ggml \
@@ -35,7 +35,7 @@ health and non-model routes remain available concurrently.
 | `--max-upload-mb` | `32` | Maximum complete request size |
 | `--max-output-mp` | `67` | Maximum output pixels, in decimal megapixels |
 | `--threads` | automatic | CPU worker threads |
-| `--cpu`, `--gpu` | automatic | Model compute device |
+| `--cpu`, `--gpu` | automatic | Preferred model compute device; automatic is best for mixed families |
 | `--vlm-model`, `--vlm-projection` | unset | Matching VLM language and projection GGUFs |
 | `--segment-model` | unset | SAM 2, SAM 3, or EdgeTAM model |
 | `--detect-model` | unset | Full SAM 3 open-vocabulary model |
