@@ -13,7 +13,8 @@ whose own notices and license texts remain authoritative:
 | stable-diffusion.cpp | generation, editing, and ESRGAN inference | MIT | `external/stable-diffusion/LICENSE` |
 | depth-anything.cpp | Depth Anything 2/3 inference and preprocessing | MIT | `external/depth-anything/LICENSE` |
 | clip.cpp-derived engine | CLIP image/text inference and preprocessing | MIT | `external/clipcpp/LICENSE` |
-| GGML | tensor runtime and device backends | MIT | `external/ggml/LICENSE` |
+| llama.cpp / libmtmd | vision-language model loading, projection, and decoding | MIT | `external/llama/LICENSE` |
+| GGML | tensor runtime and device backends | MIT | `external/llama/LICENSE` when VLM is enabled; otherwise `external/ggml/LICENSE` |
 
 Model weights are downloaded separately and are not covered by the image.cpp
 license. Their provenance, checksums, and licenses are recorded in

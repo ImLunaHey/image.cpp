@@ -13,7 +13,8 @@ segmentation, open-vocabulary SAM 3 detection and grounding, transparent
 background removal, diffusion generation and editing, Depth Anything 2/3
 estimation with optional camera pose, CLIP image/text embeddings and zero-shot
 classification, Tesseract OCR with document layout, ESRGAN upscaling, and a
-typed segment-to-cutout workflow.
+native vision-language model for captioning and visual question answering,
+plus a typed segment-to-cutout workflow.
 The typed workflows cover both coordinate-prompted and text-grounded asset
 extraction.
 See [the architecture](docs/architecture.md) for the
@@ -55,7 +56,8 @@ smaller custom build; depth can be removed with
 `-DIMAGECPP_WITH_DEPTH_ANYTHING=OFF`, and CLIP with
 `-DIMAGECPP_WITH_CLIP=OFF`. Native OCR and its pinned Tesseract/Leptonica
 libraries can be removed with `-DIMAGECPP_WITH_TESSERACT=OFF`. Tensor providers
-compile against one pinned GGML runtime.
+compile against one pinned GGML runtime. Captioning and visual question
+answering can be removed with `-DIMAGECPP_WITH_VLM=OFF`.
 
 The runtime is implemented in-process. Development-time conversion and parity
 tools may use reference implementations, but shipped inference will not invoke
@@ -90,6 +92,24 @@ Page-layout hints are available through
 exact `.traineddata` file into memory and performs all recognition in-process;
 install another Tesseract language file to recognize a different script or
 language.
+
+Download the checksum-pinned SmolVLM 256M language and vision-projection GGUFs,
+then caption an image or ask it a question:
+
+```sh
+cmake --build build --target imagecpp_model_smolvlm_q8 imagecpp_model_smolvlm_mmproj_q8
+./build/imagecpp caption \
+  models/SmolVLM-256M-Instruct-Q8_0.gguf \
+  models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg
+./build/imagecpp ask \
+  models/SmolVLM-256M-Instruct-Q8_0.gguf \
+  models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg \
+  "What is happening in this image?"
+```
+
+Add `--json` for token counts and the generation finish reason. Both model
+components are loaded once through the typed C or C++ API; image encoding,
+prompt formatting, token sampling, and decoding all remain in-process.
 
 Download the validated 15 MB EdgeTAM model and run real point- or box-prompted
 segmentation:

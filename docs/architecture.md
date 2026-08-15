@@ -32,9 +32,10 @@ environment, subprocess-based adapter, model-specific executable, or sidecar.
    CLI behavior.
 6. **Reusable sessions.** Loaded weights, compiled graphs, workspaces, and
    cached image embeddings survive across requests where the model permits it.
-7. **One compute runtime.** All built-in providers use the top-level pinned
-   `external/ggml` version and common backend/device selection. Provider-local
-   GGML submodules are never compiled into `image.cpp`.
+7. **One compute runtime.** All built-in tensor providers use one selected,
+   pinned GGML source tree and common backend/device selection. With VLM support
+   enabled this is llama.cpp's GGML; provider-local GGML submodules are never
+   compiled into `image.cpp`.
 8. **Evidence with every model.** A model family needs reference parity,
    golden outputs or metrics, reproducible commands, latency, and peak-memory
    measurements before it becomes a supported core family.
@@ -52,6 +53,7 @@ artifacts rather than unstructured JSON blobs:
 | Keypoints | coordinates, visibility/confidence, optional skeleton |
 | Depth map | dimensions, scalar type, relative/metric units, confidence |
 | Text regions | hierarchy, boxes, baselines, text, language, confidence, orientation |
+| Generated text | UTF-8 text, prompt/generated token counts, finish reason |
 | Embedding | element type, dimensions, normalization, semantic space |
 | Metadata | namespaced typed properties and provenance |
 
@@ -142,12 +144,18 @@ The first useful release should provide one binary containing:
 3. Depth Anything depth estimation (implemented);
 4. ESRGAN-class upscaling (implemented);
 5. generation and editing through an in-process native provider (implemented); and
-6. at least one typed workflow joining multiple operations (implemented:
+6. captioning and visual question answering (implemented); and
+7. at least one typed workflow joining multiple operations (implemented:
    prompted segmentation -> crop -> optional upscale -> alpha cutout).
 
 Native OCR and document layout are also implemented through the Tesseract
 library API, with caller-owned image buffers and an in-memory traineddata
 model. No Tesseract helper executable is built or invoked.
+
+Native captioning and visual question answering are implemented through the
+pinned llama.cpp `libllama` and `libmtmd` libraries. The public boundary is a
+task-specific text result; llama.cpp examples, tools, server, subprocess, and
+video components are not built or invoked.
 
 Foundation work lands first: correct image buffers, resize/crop/normalize,
 runtime introspection, errors, cancellation, tests, and packaging boundaries.

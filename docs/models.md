@@ -4,6 +4,60 @@ Model weights are external to the MIT-licensed `image.cpp` source tree. Each
 validated model has a pinned download, checksum, upstream provenance, and its
 own license.
 
+## SmolVLM 256M Instruct Q8_0
+
+The starter vision-language model uses the official two-file
+`ggml-org/SmolVLM-256M-Instruct-GGUF` release: a 175,054,528-byte language GGUF
+and a 103,769,856-byte vision-projection GGUF. Download and verify both with:
+
+```sh
+cmake --build build --target \
+  imagecpp_model_smolvlm_q8 imagecpp_model_smolvlm_mmproj_q8
+```
+
+The pinned model repository revision is
+`b9e4379657e1450d04d02eec8e345667265b0a00`. The files and their SHA-256
+digests are:
+
+| File | SHA-256 |
+| --- | --- |
+| `SmolVLM-256M-Instruct-Q8_0.gguf` | `2a31195d3769c0b0fd0a4906201666108834848db768af11de1d2cef7cd35e65` |
+| `mmproj-SmolVLM-256M-Instruct-Q8_0.gguf` | `7e943f7c53f0382a6fc41b6ee0c2def63ba4fded9ab8ed039cc9e2ab905e0edd` |
+
+The model repository identifies the weights as Apache-2.0 licensed. They stay
+outside image.cpp's MIT-licensed source tree. The native provider links the
+pinned MIT-licensed llama.cpp `libllama` and `libmtmd` libraries directly; it
+does not launch the llama CLI, server, Python, or another process.
+
+Generate a default concise caption, override its prompt, or ask a question:
+
+```sh
+./build/imagecpp caption \
+  models/SmolVLM-256M-Instruct-Q8_0.gguf \
+  models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg
+
+./build/imagecpp caption \
+  models/SmolVLM-256M-Instruct-Q8_0.gguf \
+  models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg \
+  --prompt "List the visible objects." --json
+
+./build/imagecpp ask \
+  models/SmolVLM-256M-Instruct-Q8_0.gguf \
+  models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg \
+  "What animal is shown? Answer with one word." --temperature 0
+```
+
+The loaded model serializes queries because its language context and KV cache
+are reused. CPU and supported GPU backends are selectable; `--gpu` requires a
+compiled backend capable of offload. `--context` bounds prompt plus generation,
+and `--max-tokens`, `--temperature`, `--top-k`, `--top-p`, and `--seed` control
+decoding. The provider accepts grayscale, RGB, RGBA, and BGRA 8-bit sRGB input.
+
+SmolVLM 256M is intentionally small. Captions and answers can omit details,
+misread text, or hallucinate objects, and generation metadata is not a
+confidence score. Treat outputs as untrusted model text and evaluate a larger
+compatible model when application accuracy matters.
+
 ## Tesseract fast English
 
 The starter OCR model is the 4,113,088-byte `eng.traineddata` from the official
@@ -96,11 +150,14 @@ color bleed at translucent edges. `--keep-canvas` disables cropping. The C ABI
 returns the RGBA image, exact final mask, source-space crop box, selected mask
 index, segmentation score, and predicted IoU from one owned result.
 
-Metal is selected automatically on Apple hardware. Pass `--cpu` for CPU-only
-execution or `--gpu` to require the GPU-capable provider build. A loaded model
-and encoded image are reusable through the C and C++ session APIs, so an
-interactive application does not pay load and image-encoding costs for every
-prompt.
+Metal is selected automatically on Apple hardware in a build without the VLM
+composite. The current llama.cpp GGML Metal backend does not yet implement all
+SAM graph operations, so a build with `IMAGECPP_WITH_VLM=ON` runs SAM on CPU;
+an explicit SAM `--gpu` request returns `UNSUPPORTED` instead of entering a
+backend abort. Build with `-DIMAGECPP_WITH_VLM=OFF` when SAM Metal throughput is
+the priority. A loaded model and encoded image are reusable through the C and
+C++ session APIs, so an interactive application does not pay load and
+image-encoding costs for every prompt.
 
 ## SAM 3 Q4_0
 
@@ -311,6 +368,7 @@ I/O:
 
 | Operation | Input | Time | Peak footprint |
 | --- | --- | ---: | ---: |
+| SmolVLM 256M Q8 caption | 512x512 PNG, Metal, 12 output tokens | 0.91 s | 307 MB |
 | Tesseract fast English OCR | 928x176 grayscale text, cold | 0.05 s | 33 MB |
 | EdgeTAM background removal | 1800x1200 JPEG | 1.06 s warm | 495 MB |
 | EdgeTAM -> crop -> RealESRGAN x4 -> alpha | 64x64 PNG to 256x160 RGBA | 1.48 s | 493 MB |

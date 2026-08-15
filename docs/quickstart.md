@@ -17,10 +17,11 @@ A normal runtime build does not need Python.
 
 ## Get the starter models
 
-The starter bundle is about 221 MB and enables promptable segmentation,
+The starter bundle is about 487 MiB and enables promptable segmentation,
 background removal, dense depth with optional camera pose, joint image/text
-embeddings, zero-shot classification, OCR with document layout, 4x upscaling,
-and a composed transparent cutout workflow:
+embeddings, zero-shot classification, OCR with document layout, image
+captioning, visual question answering, 4x upscaling, and a composed transparent
+cutout workflow:
 
 ```sh
 cmake --build build --target imagecpp_models_starter
@@ -58,6 +59,15 @@ Given an `input.jpg`, try:
 
 ./build/imagecpp ocr \
   models/eng.traineddata input.jpg --json > document.json
+
+./build/imagecpp caption \
+  models/SmolVLM-256M-Instruct-Q8_0.gguf \
+  models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg
+
+./build/imagecpp ask \
+  models/SmolVLM-256M-Instruct-Q8_0.gguf \
+  models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf input.jpg \
+  "What objects are visible?" --json
 ```
 
 Prompt coordinates are image pixels. A positive point should be inside the
@@ -157,6 +167,27 @@ imagecpp::OcrResult document = imagecpp::ocr(ocr_model, input, ocr_options);
 imagecpp::OcrInfo page = document.info();
 imagecpp::TextRegionInfo first_region = document.at(0);
 // page.text owns the copied UTF-8 page text; regions retain layout metadata.
+```
+
+Captioning and visual questions use a language GGUF plus its matching
+projection GGUF. The result owns its generated UTF-8 text and token metadata:
+
+```cpp
+imagecpp_vlm_model_options vlm_options{};
+imagecpp_vlm_model_options_init(&vlm_options);
+vlm_options.model_path = "models/SmolVLM-256M-Instruct-Q8_0.gguf";
+vlm_options.projection_model_path =
+    "models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf";
+imagecpp::Model vlm(runtime, vlm_options);
+
+imagecpp_visual_query_options query{};
+imagecpp_visual_query_options_init(&query);
+query.prompt = "What is the main subject? Answer briefly.";
+query.temperature = 0.0F;
+
+imagecpp::TextResult answer = imagecpp::visual_query(vlm, input, query);
+imagecpp::TextInfo text = answer.info();
+// text owns a copied UTF-8 answer plus token metadata.
 ```
 
 The same ownership model applies to semantic results:
