@@ -14,8 +14,8 @@ background removal, diffusion generation and editing, Depth Anything 2/3
 estimation with optional camera pose, CLIP image/text embeddings and zero-shot
 classification, Tesseract OCR with document layout, ESRGAN upscaling, and a
 native vision-language model for captioning and visual question answering,
-a unified native HTTP/SSE API for those operations, plus a typed
-segment-to-cutout workflow.
+a unified native HTTP/SSE API and embedded browser playground for those
+operations, plus a typed segment-to-cutout workflow.
 The typed workflows cover both coordinate-prompted and text-grounded asset
 extraction.
 See [the architecture](docs/architecture.md) for the
@@ -124,8 +124,7 @@ Serve any configured operation over native HTTP from the same binary:
   --vlm-model models/SmolVLM-256M-Instruct-Q8_0.gguf \
   --vlm-projection models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf \
   --segment-model models/edgetam_q4_0.ggml \
-  --depth-model models/depth-anything-base-q4_k.gguf \
-  --gpu
+  --depth-model models/depth-anything-base-q4_k.gguf
 
 curl --fail --data-binary @input.jpg \
   -H 'Content-Type: image/jpeg' \
@@ -139,6 +138,12 @@ curl --no-buffer -H 'Accept: text/event-stream' \
 curl --fail -F image=@input.jpg -F 'points=[[640,420,true]]' \
   http://127.0.0.1:8080/v1/cutout --output subject.png
 ```
+
+Open `http://127.0.0.1:8080/playground` to use the same operations through the
+embedded studio. It supports drag/drop and paste, model availability, visual
+results, JSON downloads, streaming VLM text, and click prompts for segmentation
+and cutout. Its HTML, CSS, and JavaScript are compiled into `imagecpp`; there is
+no separate frontend installation or runtime asset directory.
 
 The service binds to loopback by default. See the [HTTP API](docs/http-api.md)
 for resize, OCR, depth, embeddings, classification, segmentation, detection,

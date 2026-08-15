@@ -221,6 +221,8 @@ configured at startup:
   --segment-model models/edgetam_q4_0.ggml \
   --upscaler-model models/RealESRGAN_x4plus_anime_6B.pth
 
+# Then open http://127.0.0.1:8080/playground in a browser.
+
 curl --fail -F image=@input.jpg \
   -F 'question=What objects are visible?' \
   http://127.0.0.1:8080/v1/ask
@@ -239,7 +241,9 @@ returns the operations compiled into this binary. Model paths are fixed at
 startup; clients cannot select arbitrary server files. The server accepts raw
 image bodies and multipart uploads, limits requests to 32 MiB and outputs to
 about 67 megapixels by default, and binds only to `127.0.0.1` unless explicitly
-configured otherwise. See the complete [HTTP API](http-api.md).
+configured otherwise. The browser playground is embedded in the executable and
+calls these same endpoints; it does not add a Node, Python, CDN, or runtime-file
+dependency. See the complete [HTTP API](http-api.md).
 
 The same ownership model applies to semantic results:
 

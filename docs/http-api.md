@@ -49,11 +49,28 @@ health and non-model routes remain available concurrently.
 Run `imagecpp serve --help` for the remaining VLM and diffusion loading
 controls.
 
+## Embedded playground
+
+Open `http://127.0.0.1:8080/playground` after starting the service. The studio
+exposes all 16 image and text operations, reports which model families are
+configured, accepts drag/drop or clipboard images, previews image and text
+results, and downloads image or JSON responses. Segmentation and cutout support
+positive click prompts and Shift-click negative prompts in source-image
+coordinates. Caption and VQA can render their SSE response incrementally.
+
+The HTML, CSS, and JavaScript are compiled into the `imagecpp` executable. No
+Node runtime, frontend server, CDN, network font, or asset directory is needed.
+A browser request to `/` also receives the playground; clients without an
+`Accept: text/html` header retain the service-info JSON. `GET /v1/info` always
+returns that JSON explicitly.
+
 ## Endpoint map
 
 | Endpoint | Result | Required startup model |
 | --- | --- | --- |
+| `GET /playground` | Embedded browser studio | none |
 | `GET /healthz` | Process and configured-model status | none |
+| `GET /v1/info` | Service version and endpoint list | none |
 | `GET /v1/operations` | Operations compiled into the binary | none |
 | `POST /v1/resize` | Encoded image | none |
 | `POST /v1/ocr` | Text and document-region JSON | OCR |

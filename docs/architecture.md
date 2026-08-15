@@ -12,7 +12,7 @@ The user-facing distribution consists of:
 - `imagecpp`, a CLI and native HTTP/SSE service built only from the library's
   public interface;
 - optional model-family composites selected at build time; and
-- later, an embedded Web UI using the same HTTP service.
+- an embedded Web UI using the same HTTP service.
 
 Model weights are external. "One binary" means users do not need a Python
 environment, subprocess-based adapter, model-specific executable, or sidecar.
@@ -160,6 +160,12 @@ cancellation. The native HTTP/SSE layer exposes the implemented operation
 catalog through the public library API. It uses that callback directly for VLM
 backpressure and disconnect cancellation, fixes model paths at process
 startup, and keeps transport concerns out of providers.
+The server also embeds its playground HTML, CSS, and JavaScript as immutable
+compiled data. Browsers call only the same public HTTP endpoints; the UI adds no
+filesystem asset lookup, frontend server, package manager, subprocess, or model
+provider dependency. Non-browser requests to `/` retain the service-info JSON,
+while browsers receive the playground through content negotiation.
+
 llama.cpp examples, tools, server, subprocess, and video components are not
 built or invoked.
 
