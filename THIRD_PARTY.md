@@ -7,6 +7,8 @@ whose own notices and license texts remain authoritative:
 | --- | --- | --- | --- |
 | stb | PNG/JPEG/BMP/TGA codecs | MIT or public domain | `external/stb/LICENSE` |
 | libwebp | WebP codec | BSD 3-Clause | `external/libwebp/COPYING` |
+| Tesseract | OCR and document layout analysis | Apache 2.0 | `external/tesseract/LICENSE` |
+| Leptonica | Tesseract image processing primitives | BSD 2-Clause | `external/leptonica/leptonica-license.txt` |
 | sam3.cpp | SAM 2/SAM 3/EdgeTAM inference | MIT | `external/sam3/LICENSE` |
 | stable-diffusion.cpp | generation, editing, and ESRGAN inference | MIT | `external/stable-diffusion/LICENSE` |
 | depth-anything.cpp | Depth Anything 2/3 inference and preprocessing | MIT | `external/depth-anything/LICENSE` |

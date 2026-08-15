@@ -18,6 +18,7 @@ option(IMAGECPP_WITH_SAM3 "Build SAM 2/SAM 3/EdgeTAM segmentation support" ON)
 option(IMAGECPP_WITH_STABLE_DIFFUSION "Build generation, editing, and ESRGAN support" ON)
 option(IMAGECPP_WITH_DEPTH_ANYTHING "Build Depth Anything 2/3 support" ON)
 option(IMAGECPP_WITH_CLIP "Build CLIP embedding and zero-shot classification support" ON)
+option(IMAGECPP_WITH_TESSERACT "Build Tesseract OCR and document layout support" ON)
 set(IMAGECPP_TEST_SAM_MODEL "" CACHE FILEPATH "Optional SAM/EdgeTAM model used by integration tests")
 set(IMAGECPP_TEST_SAM3_MODEL "" CACHE FILEPATH "Optional full SAM 3 model used by detection integration tests")
 set(IMAGECPP_TEST_DIFFUSION_MODEL "" CACHE FILEPATH "Optional diffusion model used by integration tests")
@@ -89,6 +90,71 @@ set_target_properties(imagecpp PROPERTIES
 )
 
 imagecpp_enable_warnings(imagecpp)
+
+if(IMAGECPP_WITH_TESSERACT)
+    set(IMAGECPP_SAVED_SKIP_INSTALL_RULES ${CMAKE_SKIP_INSTALL_RULES})
+    set(CMAKE_SKIP_INSTALL_RULES ON)
+    set(BUILD_PROG OFF CACHE BOOL "" FORCE)
+    set(SW_BUILD OFF CACHE BOOL "" FORCE)
+    set(SYM_LINK OFF CACHE BOOL "" FORCE)
+    set(STRICT_CONF OFF CACHE BOOL "" FORCE)
+    set(ENABLE_ZLIB OFF CACHE BOOL "" FORCE)
+    set(ENABLE_PNG OFF CACHE BOOL "" FORCE)
+    set(ENABLE_GIF OFF CACHE BOOL "" FORCE)
+    set(ENABLE_JPEG OFF CACHE BOOL "" FORCE)
+    set(ENABLE_TIFF OFF CACHE BOOL "" FORCE)
+    set(ENABLE_WEBP OFF CACHE BOOL "" FORCE)
+    set(ENABLE_OPENJPEG OFF CACHE BOOL "" FORCE)
+    set(IMAGECPP_SAVED_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
+    set(BUILD_SHARED_LIBS OFF)
+    add_subdirectory(external/leptonica EXCLUDE_FROM_ALL)
+
+    set(IMAGECPP_LEPTONICA_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/leptonica")
+    set(IMAGECPP_LEPTONICA_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/external/leptonica")
+    set(IMAGECPP_LEPTONICA_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-leptonica-config")
+    file(MAKE_DIRECTORY "${IMAGECPP_LEPTONICA_CONFIG_DIR}")
+    configure_file(cmake/LeptonicaConfig.cmake.in
+        "${IMAGECPP_LEPTONICA_CONFIG_DIR}/LeptonicaConfig.cmake" @ONLY)
+    write_basic_package_version_file(
+        "${IMAGECPP_LEPTONICA_CONFIG_DIR}/LeptonicaConfigVersion.cmake"
+        VERSION 1.87.0
+        COMPATIBILITY SameMajorVersion
+    )
+    set(Leptonica_DIR "${IMAGECPP_LEPTONICA_CONFIG_DIR}" CACHE PATH "" FORCE)
+
+    set(OPENMP_BUILD OFF CACHE BOOL "" FORCE)
+    set(GRAPHICS_DISABLED ON CACHE BOOL "" FORCE)
+    set(DISABLED_LEGACY_ENGINE ON CACHE BOOL "" FORCE)
+    set(ENABLE_LTO OFF CACHE BOOL "" FORCE)
+    set(ENABLE_NATIVE OFF CACHE BOOL "" FORCE)
+    set(BUILD_TRAINING_TOOLS OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(DISABLE_TIFF ON CACHE BOOL "" FORCE)
+    set(DISABLE_ARCHIVE ON CACHE BOOL "" FORCE)
+    set(DISABLE_CURL ON CACHE BOOL "" FORCE)
+    set(INSTALL_CONFIGS OFF CACHE BOOL "" FORCE)
+    set(ENABLE_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
+    set(ENABLE_CCACHE OFF CACHE BOOL "" FORCE)
+    add_subdirectory(external/tesseract EXCLUDE_FROM_ALL)
+    set(CMAKE_SKIP_INSTALL_RULES ${IMAGECPP_SAVED_SKIP_INSTALL_RULES})
+    unset(IMAGECPP_SAVED_SKIP_INSTALL_RULES)
+    set(BUILD_SHARED_LIBS ${IMAGECPP_SAVED_BUILD_SHARED_LIBS})
+    unset(IMAGECPP_SAVED_BUILD_SHARED_LIBS)
+
+    set_target_properties(leptonica libtesseract PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        C_VISIBILITY_PRESET hidden
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+    )
+    set_target_properties(tesseract PROPERTIES EXCLUDE_FROM_ALL YES)
+    target_sources(imagecpp PRIVATE src/provider/tesseract_provider.cpp)
+    target_include_directories(imagecpp PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/external/tesseract/include"
+    )
+    target_link_libraries(imagecpp PRIVATE libtesseract)
+    target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_TESSERACT=1)
+endif()
 
 if(IMAGECPP_WITH_WEBP)
     set(WEBP_BUILD_ANIM_UTILS OFF CACHE BOOL "" FORCE)
@@ -521,6 +587,14 @@ install(TARGETS imagecpp
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
+if(IMAGECPP_WITH_TESSERACT)
+    install(TARGETS libtesseract leptonica
+        EXPORT imagecppTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
 if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_ANYTHING OR IMAGECPP_WITH_CLIP)
     set(IMAGECPP_GGML_TARGETS ggml ggml-base)
     foreach(backend IN LISTS GGML_AVAILABLE_BACKENDS)
@@ -574,6 +648,10 @@ install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES LICENSE THIRD_PARTY.md DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp)
 install(FILES external/stb/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME stb.txt)
 install(FILES external/libwebp/COPYING DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME libwebp.txt)
+if(IMAGECPP_WITH_TESSERACT)
+    install(FILES external/tesseract/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME tesseract.txt)
+    install(FILES external/leptonica/leptonica-license.txt DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME leptonica.txt)
+endif()
 if(IMAGECPP_WITH_SAM3)
     install(FILES external/sam3/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/imagecpp/licenses RENAME sam3.cpp.txt)
 endif()

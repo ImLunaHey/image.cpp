@@ -1,0 +1,7 @@
+set(Leptonica_FOUND TRUE)
+set(Leptonica_VERSION 1.87.0)
+set(Leptonica_VERSION_MAJOR 1)
+set(Leptonica_VERSION_MINOR 87)
+set(Leptonica_VERSION_PATCH 0)
+set(Leptonica_INCLUDE_DIRS "@IMAGECPP_LEPTONICA_SOURCE_DIR@/src;@IMAGECPP_LEPTONICA_BINARY_DIR@/src")
+set(Leptonica_LIBRARIES leptonica)

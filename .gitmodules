@@ -16,3 +16,9 @@
 [submodule "external/depth-anything"]
 	path = external/depth-anything
 	url = https://github.com/localai-org/depth-anything.cpp.git
+[submodule "external/tesseract"]
+	path = external/tesseract
+	url = https://github.com/tesseract-ocr/tesseract.git
+[submodule "external/leptonica"]
+	path = external/leptonica
+	url = https://github.com/DanBloomberg/leptonica.git
