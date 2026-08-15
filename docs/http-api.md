@@ -1,119 +1,241 @@
 # HTTP API
 
-`imagecpp serve` runs the native HTTP API inside the normal `imagecpp` process.
-The server calls the public C++ library surface; it does not invoke another
-binary, Python, a shell, or the llama.cpp server.
+`imagecpp serve` runs the native image API inside the normal `imagecpp`
+process. It calls the same public C++ library as the CLI and never invokes a
+shell, Python, another `imagecpp` process, or a provider's example server.
 
 ## Start the server
 
-Load the validated language and vision-projection GGUFs once at startup:
+Only configure the model families the process should expose:
 
 ```sh
 ./build/imagecpp serve \
+  --host 127.0.0.1 --port 8080 --gpu \
   --vlm-model models/SmolVLM-256M-Instruct-Q8_0.gguf \
   --vlm-projection models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf \
-  --host 127.0.0.1 --port 8080 --gpu
+  --segment-model models/edgetam_q4_0.ggml \
+  --detect-model models/sam3-q4_0.ggml \
+  --depth-model models/depth-anything-base-q4_k.gguf \
+  --clip-model models/clip-vit-b-32-laion2b-q4_0.gguf \
+  --ocr-model models/eng.traineddata \
+  --diffusion-checkpoint models/v1-5-pruned_Q4_0.gguf \
+  --upscaler-model models/RealESRGAN_x4plus_anime_6B.pth
 ```
 
-The relevant options are:
+Model paths are accepted only at startup. HTTP clients cannot select an
+arbitrary file from the server's filesystem. Except for the VLM, configured
+models are loaded for one request and then released so enabling several large
+families does not retain all their weights in memory. Model-backed requests are
+serialized because provider instances are not yet promised to be thread-safe;
+health and non-model routes remain available concurrently.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--host` | `127.0.0.1` | Bind address |
-| `--port` | `8080` | HTTP port |
+| `--host`, `--port` | `127.0.0.1`, `8080` | Bind address and port |
 | `--max-upload-mb` | `32` | Maximum complete request size |
-| `--vlm-model` | unset | Language-model GGUF |
-| `--vlm-projection` | unset | Matching vision-projection GGUF |
-| `--context` | `4096` | Prompt plus generation context |
+| `--max-output-mp` | `67` | Maximum output pixels, in decimal megapixels |
 | `--threads` | automatic | CPU worker threads |
-| `--cpu`, `--gpu` | automatic | VLM compute device |
+| `--cpu`, `--gpu` | automatic | Model compute device |
+| `--vlm-model`, `--vlm-projection` | unset | Matching VLM language and projection GGUFs |
+| `--segment-model` | unset | SAM 2, SAM 3, or EdgeTAM model |
+| `--detect-model` | unset | Full SAM 3 open-vocabulary model |
+| `--depth-model` | unset | Depth Anything model |
+| `--clip-model` | unset | Two-tower CLIP GGUF |
+| `--ocr-model` | unset | Tesseract traineddata file |
+| `--diffusion-checkpoint` | unset | Monolithic diffusion model |
+| `--diffusion-model`, `--vae`, `--clip-l`, `--clip-g`, `--t5xxl`, `--llm` | unset | Split diffusion components |
+| `--upscaler-model`, `--upscaler-tile` | unset, `128` | ESRGAN model and tile size |
 
-Both VLM paths are required together. Starting without them leaves health and
-operation introspection available while caption and VQA return `503`.
+Run `imagecpp serve --help` for the remaining VLM and diffusion loading
+controls.
 
-## Introspection
+## Endpoint map
 
-`GET /healthz` returns process health and model readiness:
+| Endpoint | Result | Required startup model |
+| --- | --- | --- |
+| `GET /healthz` | Process and configured-model status | none |
+| `GET /v1/operations` | Operations compiled into the binary | none |
+| `POST /v1/resize` | Encoded image | none |
+| `POST /v1/ocr` | Text and document-region JSON | OCR |
+| `POST /v1/depth` | Depth JSON or encoded visualization | depth |
+| `POST /v1/embed/image` | Embedding JSON | CLIP |
+| `POST /v1/embed/text` | Embedding JSON | CLIP |
+| `POST /v1/classify` | Ranked label JSON | CLIP |
+| `POST /v1/segment` | Mask and score JSON | segment |
+| `POST /v1/detect` | Instance boxes, masks, and scores | detect |
+| `POST /v1/cutout` | Prompted transparent image | segment; upscaler if requested |
+| `POST /v1/remove-background` | Alias of `/v1/cutout` | segment; upscaler if requested |
+| `POST /v1/extract` | Text-grounded transparent image | detect; upscaler if requested |
+| `POST /v1/generate` | Generated image(s) | diffusion |
+| `POST /v1/edit` | Edited image(s) | diffusion |
+| `POST /v1/upscale` | Upscaled image | upscaler |
+| `POST /v1/caption` | Text JSON or SSE | VLM |
+| `POST /v1/ask` | Text JSON or SSE | VLM |
 
-```json
-{"status":"ok","version":"0.1.0-dev","vlm_loaded":true}
-```
+Unconfigured model endpoints return `503 model_not_configured`. Caption and
+VQA retain `503 model_not_loaded` when their paired VLM files are absent.
 
-`GET /v1/operations` returns the typed operations compiled into this build.
-`GET /` returns basic service metadata and endpoint paths.
+## Image requests and responses
 
-## Caption an image
+Most image endpoints accept either the encoded image as the complete request
+body or `multipart/form-data` with a file field named `image`. PNG, JPEG, WebP,
+BMP, and TGA use the native library decoder. Parameters may be query parameters
+or multipart fields; multipart fields take precedence.
 
-Send the encoded image as the request body. PNG, JPEG, WebP, BMP, and TGA use
-the same native decoder as the library:
-
-```sh
-curl --fail --data-binary @input.jpg \
-  -H 'Content-Type: image/jpeg' \
-  'http://127.0.0.1:8080/v1/caption?temperature=0&max_tokens=128'
-```
-
-The response is:
+Image-producing routes default to PNG. Set `format=png|jpeg|webp|bmp|tga`,
+`quality=1..100`, and `lossless=true|false` where applicable. Workflow,
+generation, and upscaling routes accept `response=json` to return this object:
 
 ```json
 {
-  "text": "A cat sitting beside a window.",
-  "prompt_tokens": 152,
-  "generated_tokens": 8,
-  "finish_reason": "end_of_generation"
+  "image": {
+    "format": "png",
+    "mime_type": "image/png",
+    "width": 512,
+    "height": 512,
+    "base64": "iVBORw0KGgo..."
+  }
 }
 ```
 
-Multipart is also accepted. The file field must be named `image`:
+## Resize
+
+```sh
+curl --fail --data-binary @input.jpg -H 'Content-Type: image/jpeg' \
+  'http://127.0.0.1:8080/v1/resize?width=1024&height=768&filter=bilinear' \
+  --output resized.png
+```
+
+`width` and `height` are required. `filter` is `nearest` or `bilinear`.
+
+## OCR, depth, embeddings, and classification
+
+```sh
+curl --fail -F image=@document.png -F psm=auto -F dpi=300 \
+  http://127.0.0.1:8080/v1/ocr
+
+curl --fail --data-binary @input.jpg -H 'Content-Type: image/jpeg' \
+  'http://127.0.0.1:8080/v1/depth?pose=true'
+
+curl --fail --data-binary @input.jpg -H 'Content-Type: image/jpeg' \
+  http://127.0.0.1:8080/v1/embed/image
+
+curl --fail -H 'Content-Type: application/json' \
+  -d '{"text":"a studio photograph of a cat"}' \
+  http://127.0.0.1:8080/v1/embed/text
+
+curl --fail -F image=@input.jpg -F 'labels=["cat","dog","car"]' \
+  http://127.0.0.1:8080/v1/classify
+```
+
+OCR accepts `psm=auto|column|block|line|word|sparse|raw-line`, `dpi`, and
+`preserve_spaces`. Depth returns base64 PNG visualizations and optional pose
+matrices by default; set `response=image` for the depth PNG directly and
+`invert=false` to reverse its visualization convention. Classification labels
+may be a JSON array or a comma-separated field.
+
+## Segmentation and detection
+
+Point prompts are JSON arrays containing `[x,y]` or `[x,y,positive]`. A box is
+`[x0,y0,x1,y1]`:
 
 ```sh
 curl --fail -F image=@input.jpg \
-  -F 'prompt=Describe the lighting and main subject.' \
-  -F temperature=0 \
-  http://127.0.0.1:8080/v1/caption
+  -F 'points=[[640,420,true],[120,80,false]]' \
+  -F 'box=[300,120,900,700]' -F multimask=true \
+  http://127.0.0.1:8080/v1/segment
 ```
 
-## Ask a visual question
-
-`POST /v1/ask` uses the same image forms and requires `question` as a query or
-multipart field:
+Every returned segment contains its box, scores, and a base64 PNG mask.
 
 ```sh
+curl --fail -F image=@input.jpg -F prompt=cat \
+  -F threshold=0.3 -F nms=0.1 \
+  -F 'positive_boxes=[[100,80,420,500]]' \
+  http://127.0.0.1:8080/v1/detect
+```
+
+`positive_boxes` and `negative_boxes` are optional JSON arrays of boxes.
+
+## Cutout and grounded extraction
+
+`/v1/cutout` uses the segmentation prompts above. `/v1/extract` uses the
+detection prompt and thresholds. Both accept `crop=true|false`, `padding`,
+`upscale`, and `response=image|json`:
+
+```sh
+curl --fail -F image=@input.jpg -F 'points=[[640,420,true]]' \
+  -F padding=16 -F upscale=4 \
+  http://127.0.0.1:8080/v1/cutout --output subject.png
+
+curl --fail -F image=@input.jpg -F prompt=cat -F selection=all \
+  -F response=json http://127.0.0.1:8080/v1/extract
+```
+
+`selection` is `best` or `all`. Direct image responses carry workflow metadata
+in `X-Imagecpp-*` headers; JSON responses include the final mask and source box.
+
+## Generate, edit, and upscale
+
+Generation accepts a JSON object. `prompt` is required:
+
+```sh
+curl --fail -H 'Content-Type: application/json' \
+  -d '{"prompt":"a red fox in snow","width":768,"height":768,
+       "steps":20,"guidance":7,"seed":42,"response":"image"}' \
+  http://127.0.0.1:8080/v1/generate --output fox.png
+```
+
+Supported fields are `prompt`, `negative_prompt`, `width`, `height`, `steps`,
+`guidance`, `seed`, `batch_count` (at most 8), `strength`, `sampler`,
+`scheduler`, and `response`. Samplers are `auto`, `euler`, `euler-a`,
+`dpm++2m`, `lcm`, or `ddim`. Schedulers are `auto`, `discrete`, `karras`,
+`exponential`, `ays`, `sgm-uniform`, or `simple`.
+
+Editing requires multipart input and optionally accepts a `mask` file:
+
+```sh
+curl --fail -F image=@input.png -F mask=@mask.png \
+  -F 'prompt=replace the background with a forest' \
+  -F strength=0.8 -F steps=20 -F response=image \
+  http://127.0.0.1:8080/v1/edit --output edited.png
+```
+
+Generation and editing return a JSON `images` array unless `response=image`
+is requested for a single result.
+
+```sh
+curl --fail --data-binary @input.png -H 'Content-Type: image/png' \
+  'http://127.0.0.1:8080/v1/upscale?factor=4' --output upscaled.png
+```
+
+## Caption, VQA, and SSE
+
+```sh
+curl --fail -F image=@input.jpg -F temperature=0 \
+  http://127.0.0.1:8080/v1/caption
+
 curl --fail -F image=@input.jpg \
   -F 'question=What animal is shown? Answer with one word.' \
-  -F temperature=0 \
   http://127.0.0.1:8080/v1/ask
 ```
 
-Both routes accept `max_tokens`, `temperature`, `top_p`, `top_k`, and `seed`.
-Multipart fields take precedence over query parameters.
+Both accept `max_tokens`, `temperature`, `top_p`, `top_k`, and `seed`.
+Caption additionally accepts `prompt`; VQA requires `question`.
 
-## Stream with SSE
-
-Send `Accept: text/event-stream` or set `stream=true`. Each UTF-8 delta is a
-complete JSON SSE event:
-
-```sh
-curl --no-buffer -H 'Accept: text/event-stream' \
-  -F image=@input.jpg \
-  -F 'question=What is happening?' \
-  http://127.0.0.1:8080/v1/ask
-```
+Send `Accept: text/event-stream` or set `stream=true` for incremental UTF-8
+JSON events:
 
 ```text
 event: delta
 data: {"delta":"A cat"}
 
-event: delta
-data: {"delta":" is sleeping."}
-
 event: done
 data: {"text":"A cat is sleeping.","prompt_tokens":156,"generated_tokens":5,"finish_reason":"end_of_generation"}
 ```
 
-If the client disconnects, transport backpressure stops the library callback
-and cancels the remaining generation. An inference failure after streaming has
-started is delivered as an `error` event.
+Disconnecting the client cancels the remaining generation. A failure after
+streaming begins is delivered as an `error` event.
 
 ## Errors and deployment boundary
 
@@ -123,11 +245,11 @@ Non-streaming failures use a stable envelope:
 {"error":{"code":"invalid_image","message":"Image not of any known type, or corrupt"}}
 ```
 
-Malformed inputs return `400`, unsupported inputs `415`, unloaded models `503`,
-and model request failures `422`. The payload limit is enforced before model
-inference.
+Malformed inputs return `400`, unsupported operations or encodings `415`,
+unavailable resources `503`, and model request failures `422`. Upload and
+output limits are enforced before expensive work where dimensions are known.
 
-The server currently provides plain HTTP without authentication or browser
-CORS policy. Its safe default is loopback. Do not bind it to a public or
-untrusted network; put authentication, TLS, request accounting, and any wider
-network policy in a trusted reverse proxy. Model outputs remain untrusted text.
+The server provides plain HTTP without authentication or a browser CORS policy.
+Its safe default is loopback. Do not bind it to a public or untrusted network;
+put authentication, TLS, request accounting, and wider network policy in a
+trusted reverse proxy. Treat generated text and images as untrusted output.

@@ -209,14 +209,17 @@ count and are not NUL-terminated; concatenating them produces exactly the text
 owned by the final result. A callback must not re-enter the same model while a
 query is running.
 
-## Serve captioning and VQA
+## Serve the native image API
 
-The same binary can load the VLM once and expose JSON or SSE responses:
+The same binary exposes model-free transforms and whichever model families are
+configured at startup:
 
 ```sh
 ./build/imagecpp serve \
   --vlm-model models/SmolVLM-256M-Instruct-Q8_0.gguf \
-  --vlm-projection models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf
+  --vlm-projection models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf \
+  --segment-model models/edgetam_q4_0.ggml \
+  --upscaler-model models/RealESRGAN_x4plus_anime_6B.pth
 
 curl --fail -F image=@input.jpg \
   -F 'question=What objects are visible?' \
@@ -226,13 +229,17 @@ curl --no-buffer -H 'Accept: text/event-stream' \
   -F image=@input.jpg \
   -F 'prompt=Describe this image in detail.' \
   http://127.0.0.1:8080/v1/caption
+
+curl --fail -F image=@input.jpg -F 'points=[[640,420,true]]' \
+  -F upscale=4 http://127.0.0.1:8080/v1/cutout --output cutout.png
 ```
 
-`GET /healthz` reports whether the model loaded, and `GET /v1/operations`
-returns the operations compiled into this binary. The server accepts raw image
-bodies and multipart uploads, limits requests to 32 MiB by default, and binds
-only to `127.0.0.1` unless explicitly configured otherwise. See the complete
-[HTTP API](http-api.md).
+`GET /healthz` reports configured model families, and `GET /v1/operations`
+returns the operations compiled into this binary. Model paths are fixed at
+startup; clients cannot select arbitrary server files. The server accepts raw
+image bodies and multipart uploads, limits requests to 32 MiB and outputs to
+about 67 megapixels by default, and binds only to `127.0.0.1` unless explicitly
+configured otherwise. See the complete [HTTP API](http-api.md).
 
 The same ownership model applies to semantic results:
 

@@ -14,7 +14,8 @@ background removal, diffusion generation and editing, Depth Anything 2/3
 estimation with optional camera pose, CLIP image/text embeddings and zero-shot
 classification, Tesseract OCR with document layout, ESRGAN upscaling, and a
 native vision-language model for captioning and visual question answering,
-an HTTP/SSE caption and VQA API, plus a typed segment-to-cutout workflow.
+a unified native HTTP/SSE API for those operations, plus a typed
+segment-to-cutout workflow.
 The typed workflows cover both coordinate-prompted and text-grounded asset
 extraction.
 See [the architecture](docs/architecture.md) for the
@@ -116,12 +117,14 @@ API; image encoding, prompt formatting, token sampling, and decoding all
 remain in-process. The streaming APIs support cooperative cancellation and
 still return the complete text generated before cancellation.
 
-Serve those operations over native HTTP from the same binary:
+Serve any configured operation over native HTTP from the same binary:
 
 ```sh
 ./build/imagecpp serve \
   --vlm-model models/SmolVLM-256M-Instruct-Q8_0.gguf \
   --vlm-projection models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf \
+  --segment-model models/edgetam_q4_0.ggml \
+  --depth-model models/depth-anything-base-q4_k.gguf \
   --gpu
 
 curl --fail --data-binary @input.jpg \
@@ -132,11 +135,15 @@ curl --no-buffer -H 'Accept: text/event-stream' \
   -F image=@input.jpg \
   -F 'question=What is happening?' \
   http://127.0.0.1:8080/v1/ask
+
+curl --fail -F image=@input.jpg -F 'points=[[640,420,true]]' \
+  http://127.0.0.1:8080/v1/cutout --output subject.png
 ```
 
 The service binds to loopback by default. See the [HTTP API](docs/http-api.md)
-for multipart requests, SSE events, limits, errors, and network-exposure
-guidance.
+for resize, OCR, depth, embeddings, classification, segmentation, detection,
+cutout workflows, generation, editing, upscaling, VLM streaming, limits,
+errors, and network-exposure guidance.
 
 Download the validated 15 MB EdgeTAM model and run real point- or box-prompted
 segmentation:

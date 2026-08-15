@@ -156,9 +156,10 @@ model. No Tesseract helper executable is built or invoked.
 Native captioning and visual question answering are implemented through the
 pinned llama.cpp `libllama` and `libmtmd` libraries. The public boundary is a
 task-specific text result with optional incremental callbacks and cooperative
-cancellation. The native HTTP/SSE layer uses that public callback directly for
-backpressure and disconnect cancellation without coupling inference to the
-server.
+cancellation. The native HTTP/SSE layer exposes the implemented operation
+catalog through the public library API. It uses that callback directly for VLM
+backpressure and disconnect cancellation, fixes model paths at process
+startup, and keeps transport concerns out of providers.
 llama.cpp examples, tools, server, subprocess, and video components are not
 built or invoked.
 
