@@ -18,11 +18,17 @@ int main(void) {
     imagecpp_grounded_cutout_options_init(&grounded_options);
     imagecpp_ocr_options ocr_options;
     imagecpp_ocr_options_init(&ocr_options);
+    imagecpp_vlm_model_options vlm_model_options;
+    imagecpp_vlm_model_options_init(&vlm_model_options);
+    imagecpp_visual_query_options visual_query_options;
+    imagecpp_visual_query_options_init(&visual_query_options);
     imagecpp_runtime_destroy(runtime);
     return operation_count == 0 || cutout_options.struct_size != sizeof(cutout_options) ||
                    detect_options.struct_size != sizeof(detect_options) ||
                    grounded_options.struct_size != sizeof(grounded_options) ||
-                   ocr_options.struct_size != sizeof(ocr_options)
+                   ocr_options.struct_size != sizeof(ocr_options) ||
+                   vlm_model_options.struct_size != sizeof(vlm_model_options) ||
+                   visual_query_options.struct_size != sizeof(visual_query_options)
                ? 2
                : 0;
 }
