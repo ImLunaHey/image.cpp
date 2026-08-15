@@ -226,6 +226,13 @@ if(IMAGECPP_WITH_SAM3 OR IMAGECPP_WITH_STABLE_DIFFUSION OR IMAGECPP_WITH_DEPTH_A
     else()
         add_subdirectory(external/ggml)
     endif()
+    if(UNIX)
+        target_sources(ggml-base PRIVATE src/provider/ggml_no_subprocess.c)
+        target_compile_definitions(ggml-base PRIVATE
+            fork=imagecpp_ggml_fork_disabled
+            execlp=imagecpp_ggml_execlp_disabled
+        )
+    endif()
     set(BUILD_SHARED_LIBS ${IMAGECPP_SAVED_BUILD_SHARED_LIBS})
     unset(IMAGECPP_SAVED_BUILD_SHARED_LIBS)
     foreach(ggml_target ggml ggml-base ${GGML_AVAILABLE_BACKENDS})
