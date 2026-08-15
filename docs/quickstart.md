@@ -209,6 +209,31 @@ count and are not NUL-terminated; concatenating them produces exactly the text
 owned by the final result. A callback must not re-enter the same model while a
 query is running.
 
+## Serve captioning and VQA
+
+The same binary can load the VLM once and expose JSON or SSE responses:
+
+```sh
+./build/imagecpp serve \
+  --vlm-model models/SmolVLM-256M-Instruct-Q8_0.gguf \
+  --vlm-projection models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf
+
+curl --fail -F image=@input.jpg \
+  -F 'question=What objects are visible?' \
+  http://127.0.0.1:8080/v1/ask
+
+curl --no-buffer -H 'Accept: text/event-stream' \
+  -F image=@input.jpg \
+  -F 'prompt=Describe this image in detail.' \
+  http://127.0.0.1:8080/v1/caption
+```
+
+`GET /healthz` reports whether the model loaded, and `GET /v1/operations`
+returns the operations compiled into this binary. The server accepts raw image
+bodies and multipart uploads, limits requests to 32 MiB by default, and binds
+only to `127.0.0.1` unless explicitly configured otherwise. See the complete
+[HTTP API](http-api.md).
+
 The same ownership model applies to semantic results:
 
 ```cpp

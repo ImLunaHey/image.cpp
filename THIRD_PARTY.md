@@ -15,6 +15,8 @@ whose own notices and license texts remain authoritative:
 | clip.cpp-derived engine | CLIP image/text inference and preprocessing | MIT | `external/clipcpp/LICENSE` |
 | llama.cpp / libmtmd | vision-language model loading, projection, and decoding | MIT | `external/llama/LICENSE` |
 | GGML | tensor runtime and device backends | MIT | `external/llama/LICENSE` when VLM is enabled; otherwise `external/ggml/LICENSE` |
+| cpp-httplib | native HTTP and SSE transport | MIT | `external/llama/vendor/cpp-httplib/LICENSE` |
+| JSON for Modern C++ | HTTP JSON serialization | MIT | `external/llama/licenses/LICENSE-jsonhpp` |
 
 Model weights are downloaded separately and are not covered by the image.cpp
 license. Their provenance, checksums, and licenses are recorded in

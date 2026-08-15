@@ -9,9 +9,10 @@ than a single diffusion implementation or a collection of unrelated examples.
 The user-facing distribution consists of:
 
 - `libimagecpp`, an embeddable library with a stable C ABI;
-- `imagecpp`, a CLI built only from the library's public interface;
+- `imagecpp`, a CLI and native HTTP/SSE service built only from the library's
+  public interface;
 - optional model-family composites selected at build time; and
-- later, an HTTP server and embedded Web UI using the same library.
+- later, an embedded Web UI using the same HTTP service.
 
 Model weights are external. "One binary" means users do not need a Python
 environment, subprocess-based adapter, model-specific executable, or sidecar.
@@ -155,9 +156,11 @@ model. No Tesseract helper executable is built or invoked.
 Native captioning and visual question answering are implemented through the
 pinned llama.cpp `libllama` and `libmtmd` libraries. The public boundary is a
 task-specific text result with optional incremental callbacks and cooperative
-cancellation. This streaming boundary can feed a future native HTTP/SSE layer
-without coupling inference to the server. llama.cpp examples, tools, server,
-subprocess, and video components are not built or invoked.
+cancellation. The native HTTP/SSE layer uses that public callback directly for
+backpressure and disconnect cancellation without coupling inference to the
+server.
+llama.cpp examples, tools, server, subprocess, and video components are not
+built or invoked.
 
 Foundation work lands first: correct image buffers, resize/crop/normalize,
 runtime introspection, errors, cancellation, tests, and packaging boundaries.
