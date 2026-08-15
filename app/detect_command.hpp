@@ -6,5 +6,6 @@
 void print_detect_command_usage(std::ostream &output);
 int detect_image_command(int argc, char **argv);
 int ground_image_command(int argc, char **argv);
+int extract_image_command(int argc, char **argv);
 
 #endif

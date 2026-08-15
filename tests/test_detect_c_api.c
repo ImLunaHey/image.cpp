@@ -20,6 +20,7 @@ int main(void) {
     imagecpp_session *session = NULL;
     imagecpp_image *image = NULL;
     imagecpp_detection_result *result = NULL;
+    imagecpp_grounded_cutout_result *cutout_result = NULL;
 
     if (imagecpp_runtime_create(&runtime, &error) != IMAGECPP_STATUS_OK) {
         goto cleanup;
@@ -79,9 +80,49 @@ int main(void) {
         exit_code = 4;
         goto cleanup;
     }
+
+    imagecpp_detection_result_destroy(result);
+    result = NULL;
+    imagecpp_grounded_cutout_options cutout_options;
+    imagecpp_grounded_cutout_options_init(&cutout_options);
+    cutout_options.detect.prompt = "cat";
+    cutout_options.detect.score_threshold = 0.3F;
+    cutout_options.padding = 8;
+    if (imagecpp_grounded_cutout(session, NULL, &image_view, &cutout_options, &cutout_result, &error) !=
+        IMAGECPP_STATUS_OK) {
+        exit_code = 5;
+        goto cleanup;
+    }
+    imagecpp_grounded_cutout_info cutout_info = {0};
+    cutout_info.struct_size = sizeof(cutout_info);
+    if (imagecpp_grounded_cutout_result_info(cutout_result, &cutout_info, &error) != IMAGECPP_STATUS_OK ||
+        cutout_info.matched_detection_count == 0 || cutout_info.selected_detection_count != 1 ||
+        cutout_info.best_score < 0.3F || cutout_info.image.pixel_format != IMAGECPP_PIXEL_FORMAT_RGBA_U8 ||
+        cutout_info.mask.pixel_format != IMAGECPP_PIXEL_FORMAT_GRAY_U8 ||
+        cutout_info.image.width != cutout_info.mask.width || cutout_info.image.height != cutout_info.mask.height ||
+        cutout_info.source_box.x1 <= cutout_info.source_box.x0 ||
+        cutout_info.source_box.y1 <= cutout_info.source_box.y0 || cutout_info.source_box.x0 < 0.0F ||
+        cutout_info.source_box.y0 < 0.0F || cutout_info.source_box.x1 > (float)image_view.width ||
+        cutout_info.source_box.y1 > (float)image_view.height) {
+        exit_code = 6;
+        goto cleanup;
+    }
+    const uint8_t *cutout_pixels = (const uint8_t *)cutout_info.image.data;
+    const uint8_t *cutout_mask = (const uint8_t *)cutout_info.mask.data;
+    for (uint32_t row = 0; row < cutout_info.image.height; ++row) {
+        const uint8_t *pixel_row = cutout_pixels + (size_t)row * cutout_info.image.row_stride;
+        const uint8_t *mask_row = cutout_mask + (size_t)row * cutout_info.mask.row_stride;
+        for (uint32_t column = 0; column < cutout_info.image.width; ++column) {
+            if (pixel_row[(size_t)column * 4 + 3] != mask_row[column]) {
+                exit_code = 7;
+                goto cleanup;
+            }
+        }
+    }
     exit_code = 0;
 
 cleanup:
+    imagecpp_grounded_cutout_result_destroy(cutout_result);
     imagecpp_detection_result_destroy(result);
     imagecpp_image_destroy(image);
     imagecpp_session_destroy(session);

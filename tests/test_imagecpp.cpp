@@ -62,7 +62,7 @@ void test_version_and_runtime() {
     const auto operations = runtime.operations();
     size_t expected_count = 1;
 #if defined(IMAGECPP_TEST_WITH_SAM3)
-    expected_count += 3;
+    expected_count += 4;
 #endif
 #if defined(IMAGECPP_TEST_WITH_DEPTH_ANYTHING)
     expected_count += 1;
@@ -82,6 +82,10 @@ void test_version_and_runtime() {
 #if defined(IMAGECPP_TEST_WITH_SAM3)
     require(operations[index].id == "image.detect.sam3", "runtime should expose SAM 3 detection");
     require(operations[index].task == IMAGECPP_TASK_DETECT, "SAM 3 detection task mismatch");
+    ++index;
+    require(operations[index].id == "image.workflow.grounded-cutout",
+            "runtime should expose the grounded cutout workflow");
+    require(operations[index].task == IMAGECPP_TASK_WORKFLOW, "grounded cutout workflow task mismatch");
     ++index;
     require(operations[index].id == "image.segment.sam", "runtime should expose image.segment.sam");
     require(operations[index].task == IMAGECPP_TASK_SEGMENT, "SAM operation task mismatch");
@@ -134,6 +138,15 @@ void test_model_api_validation() {
     require(detect_options.struct_size == sizeof(detect_options), "detection options initializer is invalid");
     require(detect_options.score_threshold == 0.5F && detect_options.nms_threshold == 0.1F,
             "detection option defaults are invalid");
+
+    imagecpp_grounded_cutout_options grounded_options{};
+    imagecpp_grounded_cutout_options_init(&grounded_options);
+    require(grounded_options.struct_size == sizeof(grounded_options), "grounded cutout options initializer is invalid");
+    require(grounded_options.detect.struct_size == sizeof(grounded_options.detect),
+            "nested detection options initializer is invalid");
+    require(grounded_options.selection == IMAGECPP_GROUNDED_CUTOUT_BEST && grounded_options.crop_to_mask == 1 &&
+                grounded_options.upscale_factor == 1,
+            "grounded cutout option defaults are invalid");
 
     imagecpp_cutout_options cutout_options{};
     imagecpp_cutout_options_init(&cutout_options);

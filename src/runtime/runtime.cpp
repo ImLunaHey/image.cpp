@@ -50,6 +50,14 @@ imagecpp_status imagecpp_runtime_create(imagecpp_runtime **output, imagecpp_erro
             IMAGECPP_ARTIFACT_BOXES,
         });
         runtime->operations.push_back({
+            "image.workflow.grounded-cutout",
+            "Extract a concept cutout",
+            "Detect, select or union, crop, alpha-mask, and optionally upscale a text-prompted concept",
+            IMAGECPP_TASK_WORKFLOW,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_IMAGE,
+        });
+        runtime->operations.push_back({
             "image.segment.sam",
             "Segment with SAM",
             "Point- and box-prompted segmentation with SAM 2, SAM 3, or EdgeTAM",

@@ -283,6 +283,31 @@ typedef struct imagecpp_detection_info {
     float iou_score;
 } imagecpp_detection_info;
 
+typedef enum imagecpp_grounded_cutout_selection {
+    IMAGECPP_GROUNDED_CUTOUT_BEST = 0,
+    IMAGECPP_GROUNDED_CUTOUT_ALL = 1
+} imagecpp_grounded_cutout_selection;
+
+typedef struct imagecpp_grounded_cutout_options {
+    size_t struct_size;
+    imagecpp_detect_options detect;
+    imagecpp_grounded_cutout_selection selection;
+    int crop_to_mask;
+    uint32_t padding;
+    uint32_t upscale_factor;
+} imagecpp_grounded_cutout_options;
+
+typedef struct imagecpp_grounded_cutout_info {
+    size_t struct_size;
+    imagecpp_const_image_view image;
+    imagecpp_const_image_view mask;
+    imagecpp_box source_box;
+    size_t matched_detection_count;
+    size_t selected_detection_count;
+    float best_score;
+    float best_iou_score;
+} imagecpp_grounded_cutout_info;
+
 typedef struct imagecpp_cutout_options {
     size_t struct_size;
     imagecpp_segment_options segment;
@@ -330,6 +355,7 @@ typedef struct imagecpp_embedding_result imagecpp_embedding_result;
 typedef struct imagecpp_classification_result imagecpp_classification_result;
 typedef struct imagecpp_cutout_result imagecpp_cutout_result;
 typedef struct imagecpp_detection_result imagecpp_detection_result;
+typedef struct imagecpp_grounded_cutout_result imagecpp_grounded_cutout_result;
 
 IMAGECPP_API uint32_t imagecpp_version(void);
 IMAGECPP_API const char *imagecpp_version_string(void);
@@ -403,6 +429,17 @@ IMAGECPP_API size_t imagecpp_detection_result_count(const imagecpp_detection_res
 IMAGECPP_API imagecpp_status imagecpp_detection_result_info(const imagecpp_detection_result *result, size_t index,
                                                             imagecpp_detection_info *output, imagecpp_error *error);
 IMAGECPP_API void imagecpp_detection_result_destroy(imagecpp_detection_result *result);
+
+IMAGECPP_API void imagecpp_grounded_cutout_options_init(imagecpp_grounded_cutout_options *options);
+IMAGECPP_API imagecpp_status imagecpp_grounded_cutout(imagecpp_session *detect_session,
+                                                      const imagecpp_model *upscaler_model,
+                                                      const imagecpp_const_image_view *image,
+                                                      const imagecpp_grounded_cutout_options *options,
+                                                      imagecpp_grounded_cutout_result **output, imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_grounded_cutout_result_info(const imagecpp_grounded_cutout_result *result,
+                                                                  imagecpp_grounded_cutout_info *output,
+                                                                  imagecpp_error *error);
+IMAGECPP_API void imagecpp_grounded_cutout_result_destroy(imagecpp_grounded_cutout_result *result);
 
 IMAGECPP_API void imagecpp_cutout_options_init(imagecpp_cutout_options *options);
 IMAGECPP_API imagecpp_status imagecpp_cutout(imagecpp_session *segment_session, const imagecpp_model *upscaler_model,

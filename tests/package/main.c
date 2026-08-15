@@ -14,9 +14,12 @@ int main(void) {
     imagecpp_cutout_options_init(&cutout_options);
     imagecpp_detect_options detect_options;
     imagecpp_detect_options_init(&detect_options);
+    imagecpp_grounded_cutout_options grounded_options;
+    imagecpp_grounded_cutout_options_init(&grounded_options);
     imagecpp_runtime_destroy(runtime);
     return operation_count == 0 || cutout_options.struct_size != sizeof(cutout_options) ||
-                   detect_options.struct_size != sizeof(detect_options)
+                   detect_options.struct_size != sizeof(detect_options) ||
+                   grounded_options.struct_size != sizeof(grounded_options)
                ? 2
                : 0;
 }

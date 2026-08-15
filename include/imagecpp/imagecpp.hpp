@@ -615,6 +615,72 @@ class Session final {
     imagecpp_session *handle_ = nullptr;
 };
 
+struct GroundedCutoutInfo {
+    imagecpp_const_image_view image{};
+    imagecpp_const_image_view mask{};
+    imagecpp_box source_box{};
+    size_t matched_detection_count = 0;
+    size_t selected_detection_count = 0;
+    float best_score = 0.0F;
+    float best_iou_score = 0.0F;
+};
+
+class GroundedCutoutResult final {
+  public:
+    ~GroundedCutoutResult() { imagecpp_grounded_cutout_result_destroy(handle_); }
+
+    GroundedCutoutResult(const GroundedCutoutResult &) = delete;
+    GroundedCutoutResult &operator=(const GroundedCutoutResult &) = delete;
+
+    GroundedCutoutResult(GroundedCutoutResult &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    GroundedCutoutResult &operator=(GroundedCutoutResult &&other) noexcept {
+        if (this != &other) {
+            imagecpp_grounded_cutout_result_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    GroundedCutoutInfo info() const {
+        imagecpp_grounded_cutout_info result{};
+        result.struct_size = sizeof(result);
+        imagecpp_error error{};
+        check(imagecpp_grounded_cutout_result_info(handle_, &result, &error), error);
+        return {result.image,
+                result.mask,
+                result.source_box,
+                result.matched_detection_count,
+                result.selected_detection_count,
+                result.best_score,
+                result.best_iou_score};
+    }
+
+  private:
+    explicit GroundedCutoutResult(imagecpp_grounded_cutout_result *handle) noexcept : handle_(handle) {}
+
+    friend GroundedCutoutResult grounded_cutout(Session &, const Model *, const imagecpp_const_image_view &,
+                                                const imagecpp_grounded_cutout_options &);
+
+    imagecpp_grounded_cutout_result *handle_ = nullptr;
+};
+
+inline GroundedCutoutResult grounded_cutout(Session &detect_session, const Model *upscaler_model,
+                                            const imagecpp_const_image_view &image,
+                                            const imagecpp_grounded_cutout_options &options) {
+    imagecpp_grounded_cutout_result *result = nullptr;
+    imagecpp_error error{};
+    check(imagecpp_grounded_cutout(detect_session.get(), upscaler_model == nullptr ? nullptr : upscaler_model->get(),
+                                   &image, &options, &result, &error),
+          error);
+    return GroundedCutoutResult(result);
+}
+
+inline GroundedCutoutResult grounded_cutout(Session &detect_session, const Model *upscaler_model, const Image &image,
+                                            const imagecpp_grounded_cutout_options &options) {
+    return grounded_cutout(detect_session, upscaler_model, image.view(), options);
+}
+
 struct CutoutInfo {
     imagecpp_const_image_view image{};
     imagecpp_const_image_view mask{};

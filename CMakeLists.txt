@@ -63,6 +63,8 @@ add_library(imagecpp ${IMAGECPP_LIBRARY_TYPE}
     src/runtime/runtime.cpp
     src/version.cpp
     src/workflow/cutout.cpp
+    src/workflow/cutout_internal.cpp
+    src/workflow/grounded_cutout.cpp
 )
 add_library(imagecpp::imagecpp ALIAS imagecpp)
 
@@ -375,7 +377,7 @@ if(IMAGECPP_BUILD_TESTS)
             target_link_libraries(imagecpp_detect_c_api_test PRIVATE imagecpp::imagecpp)
             target_compile_definitions(imagecpp_detect_c_api_test PRIVATE
                 "IMAGECPP_TEST_SAM3_MODEL_PATH=\"${IMAGECPP_TEST_SAM3_MODEL}\""
-                "IMAGECPP_TEST_IMAGE_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/cat_with_sd_cpp_20184.png\""
+                "IMAGECPP_TEST_IMAGE_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png\""
             )
             imagecpp_enable_warnings(imagecpp_detect_c_api_test)
             set_target_properties(imagecpp_detect_c_api_test PROPERTIES LINKER_LANGUAGE CXX)
@@ -385,7 +387,7 @@ if(IMAGECPP_BUILD_TESTS)
                 NAME imagecpp.cli.detect-model
                 COMMAND imagecpp_cli detect
                     "${IMAGECPP_TEST_SAM3_MODEL}"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/cat_with_sd_cpp_20184.png"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png"
                     cat
                     --threshold 0.3
             )
@@ -394,12 +396,40 @@ if(IMAGECPP_BUILD_TESTS)
                 NAME imagecpp.cli.ground-model
                 COMMAND imagecpp_cli ground
                     "${IMAGECPP_TEST_SAM3_MODEL}"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/cat_with_sd_cpp_20184.png"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png"
                     "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-cli-ground-mask.png"
                     cat
                     --threshold 0.3
             )
             set_tests_properties(imagecpp.cli.ground-model PROPERTIES TIMEOUT 120)
+            add_test(
+                NAME imagecpp.cli.extract-model
+                COMMAND imagecpp_cli extract
+                    "${IMAGECPP_TEST_SAM3_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png"
+                    "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-cli-extract.png"
+                    cat
+                    --threshold 0.3
+                    --all
+                    --padding 8
+            )
+            set_tests_properties(imagecpp.cli.extract-model PROPERTIES TIMEOUT 120)
+            if(IMAGECPP_WITH_STABLE_DIFFUSION AND IMAGECPP_TEST_UPSCALER_MODEL)
+                add_test(
+                    NAME imagecpp.cli.extract-upscale-model
+                    COMMAND imagecpp_cli extract
+                        "${IMAGECPP_TEST_SAM3_MODEL}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png"
+                        "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-cli-extract-upscaled.png"
+                        cat
+                        --threshold 0.3
+                        --padding 8
+                        --upscaler "${IMAGECPP_TEST_UPSCALER_MODEL}"
+                        --factor 4
+                        --tile 128
+                )
+                set_tests_properties(imagecpp.cli.extract-upscale-model PROPERTIES TIMEOUT 180)
+            endif()
         endif()
         if(IMAGECPP_WITH_STABLE_DIFFUSION AND IMAGECPP_TEST_DIFFUSION_MODEL)
             add_test(

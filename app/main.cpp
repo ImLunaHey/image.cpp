@@ -35,6 +35,7 @@ void print_usage(std::ostream &output) {
            << "  imagecpp classify <model> <input-image> <label> [label ...] [--threads N]\n"
            << "  imagecpp detect <model> <input-image> <text-prompt> [detection options]\n"
            << "  imagecpp ground <model> <input-image> <output-mask> <text-prompt> [detection options]\n"
+           << "  imagecpp extract <model> <input-image> <output-image> <text-prompt> [workflow options]\n"
            << "\nprompt options:\n"
            << "  --point <x>,<y>        positive point (repeatable)\n"
            << "  --negative <x>,<y>     negative point (repeatable)\n"
@@ -487,6 +488,9 @@ int main(int argc, char **argv) {
         }
         if (argc >= 2 && std::string(argv[1]) == "ground") {
             return ground_image_command(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "extract") {
+            return extract_image_command(argc, argv);
         }
         print_usage(argc == 1 ? std::cout : std::cerr);
         return argc == 1 ? 0 : 2;
