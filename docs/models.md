@@ -88,12 +88,25 @@ Return JSON boxes and scores, or write the union of all matching masks:
 
 ./build/imagecpp ground \
   models/sam3-q4_0.ggml input.jpg buses.png "yellow school bus"
+
+./build/imagecpp extract \
+  models/sam3-q4_0.ggml input.jpg bus.png "yellow school bus" \
+  --threshold 0.4 --padding 16
 ```
 
 Use `--positive-box x0,y0,x1,y1` or `--negative-box x0,y0,x1,y1` to combine
 text with visual exemplars. The C and C++ APIs retain separate instance masks
 and label each result with the caller's prompt. Detection results are sorted
 by descending score. Empty results are a successful query with count zero.
+
+`extract` selects the highest-confidence detection and emits a cropped RGBA
+asset. Add `--all` to union all matches, `--keep-canvas` to retain the source
+extent, or `--upscaler <model> --factor 4` to run ESRGAN before applying the
+resized alpha mask. ESRGAN uses 128-pixel tiles by default in this composed CLI
+path; override that with `--tile`. The typed result exposes the final image and
+mask, source-space crop box, matched and selected counts, and best model scores.
+No match is reported as `MODEL_ERROR` because the workflow cannot produce an
+asset, while the lower-level detection API still returns a valid empty result.
 
 SAM 3 is open-vocabulary, but its scores are not calibrated truth and its noun
 phrase interpretation can miss instances or include false positives. Evaluate

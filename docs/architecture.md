@@ -67,9 +67,10 @@ caption -> prompt-enhance -> edit
 ```
 
 The detection, crop, upscale, segmentation, and remove-background primitives
-in the first two example paths are now implemented. The first shipped typed
-composition is the prompted cutout workflow; a general programmatic graph
-will build on the same artifact contracts.
+in the first two example paths are now implemented. Typed compositions cover
+both coordinate-prompted cutouts and text-grounded best/all-instance asset
+extraction. A general programmatic graph will build on the same artifact
+contracts.
 
 ## Runtime layers
 

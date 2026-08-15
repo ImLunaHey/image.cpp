@@ -85,6 +85,15 @@ cmake --build build --target imagecpp_models_full
 ./build/imagecpp ground \
   models/sam3-q4_0.ggml input.jpg buses.png "yellow school bus"
 
+./build/imagecpp extract \
+  models/sam3-q4_0.ggml input.jpg bus.png "yellow school bus" \
+  --threshold 0.4 --padding 16
+
+./build/imagecpp extract \
+  models/sam3-q4_0.ggml input.jpg buses-4x.png "yellow school bus" \
+  --all --padding 16 \
+  --upscaler models/RealESRGAN_x4plus_anime_6B.pth --factor 4
+
 ./build/imagecpp generate \
   models/v1-5-pruned_Q4_0.gguf generated.png \
   "a small orange cat on a windowsill, detailed photograph" \
@@ -165,6 +174,31 @@ for (size_t index = 0; index < detections.size(); ++index) {
     imagecpp::DetectionInfo instance = detections.at(index);
     // instance.box, instance.score, and instance.mask are typed artifacts.
 }
+```
+
+The grounded cutout workflow performs detection, instance selection, crop,
+optional upscale, and alpha composition in one owned result:
+
+```cpp
+imagecpp_upscaler_model_options grounded_upscale_options{};
+imagecpp_upscaler_model_options_init(&grounded_upscale_options);
+grounded_upscale_options.model_path = "models/RealESRGAN_x4plus_anime_6B.pth";
+grounded_upscale_options.tile_size = 128;
+imagecpp::Model grounded_upscaler(runtime, grounded_upscale_options);
+
+imagecpp_grounded_cutout_options grounded_options{};
+imagecpp_grounded_cutout_options_init(&grounded_options);
+grounded_options.detect.prompt = "yellow school bus";
+grounded_options.detect.score_threshold = 0.4F;
+grounded_options.selection = IMAGECPP_GROUNDED_CUTOUT_ALL;
+grounded_options.padding = 16;
+grounded_options.upscale_factor = 4;
+
+imagecpp::GroundedCutoutResult grounded =
+    imagecpp::grounded_cutout(detection_session, &grounded_upscaler, input,
+                              grounded_options);
+imagecpp::GroundedCutoutInfo grounded_info = grounded.info();
+// grounded_info.image is RGBA; mask and source_box describe the exact asset.
 ```
 
 Typed workflows use the same reusable model and session handles:

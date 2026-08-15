@@ -13,6 +13,8 @@ segmentation, open-vocabulary SAM 3 detection and grounding, transparent
 background removal, diffusion generation and editing, Depth Anything 2/3
 estimation with optional camera pose, CLIP image/text embeddings and zero-shot
 classification, ESRGAN upscaling, and a typed segment-to-cutout workflow.
+The typed workflows cover both coordinate-prompted and text-grounded asset
+extraction.
 See [the architecture](docs/architecture.md) for the
 project boundary and roadmap.
 
@@ -97,12 +99,21 @@ model returns a box, confidence, and pixel mask for every matching instance:
 cmake --build build --target imagecpp_model_sam3_q4
 ./build/imagecpp detect models/sam3-q4_0.ggml input.jpg "yellow school bus" --threshold 0.4
 ./build/imagecpp ground models/sam3-q4_0.ggml input.jpg buses.png "yellow school bus"
+./build/imagecpp extract models/sam3-q4_0.ggml input.jpg bus.png "yellow school bus" \
+  --threshold 0.4 --padding 16
+
+./build/imagecpp extract models/sam3-q4_0.ggml input.jpg buses-4x.png "yellow school bus" \
+  --all --padding 16 --upscaler models/RealESRGAN_x4plus_anime_6B.pth --factor 4
 ```
 
 `detect` emits structured JSON. `ground` unions the instance masks into a
-full-resolution grayscale mask. Positive and negative visual exemplars can be
-added with repeatable `--positive-box` and `--negative-box` options. A loaded
-session encodes its image once and can answer multiple text prompts.
+full-resolution grayscale mask. `extract` turns the highest-confidence match
+directly into cropped RGBA; `--all` unions every matching instance. It can
+upscale the opaque crop before alpha is applied, and uses tiled ESRGAN by
+default to bound memory on larger inputs. Positive and negative visual
+exemplars can be added with repeatable `--positive-box` and `--negative-box`
+options. A loaded session encodes its image once and can answer multiple text
+prompts.
 
 See [models](docs/models.md) for checksums, provenance, model licensing, device
 selection, and reusable session behavior.
