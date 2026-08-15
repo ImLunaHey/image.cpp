@@ -3,6 +3,7 @@
 
 #include "imagecpp/imagecpp.hpp"
 #include "server/http_server.hpp"
+#include "server/model_cache.hpp"
 
 #include <memory>
 #include <mutex>
@@ -22,6 +23,8 @@ class OperationApi final {
     OperationApi &operator=(const OperationApi &) = delete;
 
     void register_routes(httplib::Server &server);
+    ModelCacheInfo model_cache_info() const;
+    size_t clear_model_cache();
 
   private:
     class Impl;

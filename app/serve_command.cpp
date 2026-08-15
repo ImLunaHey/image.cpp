@@ -24,6 +24,20 @@ uint64_t positive_integer(const std::string &value, const char *name) {
     return parsed;
 }
 
+uint64_t nonnegative_integer(const std::string &value, const char *name) {
+    size_t consumed = 0;
+    uint64_t parsed = 0;
+    try {
+        parsed = std::stoull(value, &consumed);
+    } catch (const std::exception &) {
+        throw std::runtime_error(std::string("invalid ") + name);
+    }
+    if (consumed != value.size()) {
+        throw std::runtime_error(std::string("invalid ") + name);
+    }
+    return parsed;
+}
+
 const char *next_value(int argc, char **argv, int &index, const std::string &option) {
     if (++index >= argc) {
         throw std::runtime_error(option + " requires a value");
@@ -67,6 +81,13 @@ int serve_command(int argc, char **argv) {
                 throw std::runtime_error("output pixel limit is too large");
             }
             config.max_output_pixels = megapixels * pixels_per_megapixel;
+        } else if (option == "--model-cache-size") {
+            const uint64_t size = nonnegative_integer(next_value(argc, argv, index, option), "model cache size");
+            constexpr uint64_t maximum_cache_size = 64;
+            if (size > maximum_cache_size) {
+                throw std::runtime_error("model cache size cannot exceed 64");
+            }
+            config.model_cache_size = static_cast<size_t>(size);
         } else if (option == "--vlm-model") {
             config.vlm_model_path = next_value(argc, argv, index, option);
         } else if (option == "--vlm-projection") {
@@ -146,6 +167,7 @@ void print_serve_command_usage(std::ostream &output) {
            << "  --port <number>        HTTP port (default: 8080)\n"
            << "  --max-upload-mb <n>    maximum request size in MiB (default: 32)\n"
            << "  --max-output-mp <n>    maximum output size in megapixels (default: 67)\n"
+           << "  --model-cache-size <n> retained non-VLM model families (default: 1; 0 disables)\n"
            << "  --vlm-model <path>     language-model GGUF for caption and VQA\n"
            << "  --vlm-projection <path> matching vision-projection GGUF\n"
            << "  --segment-model <path> SAM 2, SAM 3, or EdgeTAM segmentation model\n"

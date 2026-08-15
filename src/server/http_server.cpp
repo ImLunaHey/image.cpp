@@ -89,6 +89,16 @@ Json text_result_json(const imagecpp::TextInfo &result) {
             {"finish_reason", finish_reason_name(result.finish_reason)}};
 }
 
+Json model_cache_json(const ModelCacheInfo &info) {
+    return {{"capacity", info.capacity},
+            {"size", info.size},
+            {"hits", info.hits},
+            {"misses", info.misses},
+            {"evictions", info.evictions},
+            {"clears", info.clears},
+            {"loaded_families", info.loaded_families}};
+}
+
 std::optional<std::string> request_value(const httplib::Request &request, const std::string &name) {
     if (request.is_multipart_form_data() && request.form.has_field(name)) {
         return request.form.get_field(name);
@@ -311,10 +321,11 @@ class HttpServer::Impl final {
                      {{"name", "image.cpp"},
                       {"version", imagecpp_version_string()},
                       {"endpoints",
-                       {"/playground",  "/healthz",   "/v1/info",        "/v1/operations",        "/v1/resize",
-                        "/v1/ocr",      "/v1/depth",  "/v1/embed/image", "/v1/embed/text",        "/v1/classify",
-                        "/v1/segment",  "/v1/detect", "/v1/cutout",      "/v1/remove-background", "/v1/extract",
-                        "/v1/generate", "/v1/edit",   "/v1/upscale",     "/v1/caption",           "/v1/ask"}}});
+                       {"/playground",  "/healthz",     "/v1/info",   "/v1/operations",  "/v1/resize",
+                        "/v1/models",   "/v1/ocr",      "/v1/depth",  "/v1/embed/image", "/v1/embed/text",
+                        "/v1/classify", "/v1/segment",  "/v1/detect", "/v1/cutout",      "/v1/remove-background",
+                        "/v1/extract",  "/v1/generate", "/v1/edit",   "/v1/upscale",     "/v1/caption",
+                        "/v1/ask"}}});
         };
         server_.Get("/", [set_service_info](const httplib::Request &request, httplib::Response &response) {
             if (request.get_header_value("Accept").find("text/html") != std::string::npos) {
@@ -340,6 +351,7 @@ class HttpServer::Impl final {
                 {{"status", "ok"},
                  {"version", imagecpp_version_string()},
                  {"vlm_loaded", vlm_ != nullptr},
+                 {"model_cache", model_cache_json(operation_api_->model_cache_info())},
                  {"configured_models",
                   {{"segment", !config_.segment_model_path.empty()},
                    {"detect", !config_.detect_model_path.empty()},
@@ -349,6 +361,16 @@ class HttpServer::Impl final {
                    {"diffusion", !config_.diffusion_checkpoint_path.empty() || !config_.diffusion_model_path.empty()},
                    {"upscaler", !config_.upscaler_model_path.empty()},
                    {"vlm", vlm_ != nullptr}}}});
+        });
+        server_.Get("/v1/models", [this](const httplib::Request &, httplib::Response &response) {
+            set_json(
+                response, 200,
+                {{"cache", model_cache_json(operation_api_->model_cache_info())}, {"resident_vlm", vlm_ != nullptr}});
+        });
+        server_.Delete("/v1/models/cache", [this](const httplib::Request &, httplib::Response &response) {
+            const size_t removed = operation_api_->clear_model_cache();
+            set_json(response, 200,
+                     {{"removed", removed}, {"cache", model_cache_json(operation_api_->model_cache_info())}});
         });
         server_.Get("/v1/operations", [this](const httplib::Request &, httplib::Response &response) {
             Json operations = Json::array();

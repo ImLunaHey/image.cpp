@@ -380,7 +380,7 @@ const char *nullable_path(const std::string &path) { return path.empty() ? nullp
 class OperationApi::Impl final {
   public:
     Impl(imagecpp::Runtime &runtime, const HttpServerConfig &config, std::mutex &model_mutex)
-        : runtime_(runtime), config_(config), model_mutex_(model_mutex) {}
+        : runtime_(runtime), config_(config), model_mutex_(model_mutex), model_cache_(config.model_cache_size) {}
 
     void register_routes(httplib::Server &server) {
         server.Post("/v1/resize", [this](const httplib::Request &request, httplib::Response &response) {
@@ -425,6 +425,13 @@ class OperationApi::Impl final {
         server.Post("/v1/upscale", [this](const httplib::Request &request, httplib::Response &response) {
             handle_upscale(request, response);
         });
+    }
+
+    ModelCacheInfo model_cache_info() const { return model_cache_.info(); }
+
+    size_t clear_model_cache() {
+        const std::lock_guard<std::mutex> lock(model_mutex_);
+        return model_cache_.clear();
     }
 
   private:
@@ -523,8 +530,10 @@ class OperationApi::Impl final {
             const std::lock_guard<std::mutex> lock(model_mutex_);
             imagecpp_model_options load_options = model_options(config_, config_.ocr_model_path);
             load_options.device = IMAGECPP_DEVICE_CPU;
-            imagecpp::Model model(runtime_, "image.ocr.tesseract", load_options);
-            const imagecpp::OcrResult result = imagecpp::ocr(model, *image, options);
+            const std::shared_ptr<imagecpp::Model> model = model_cache_.acquire("ocr", [&] {
+                return std::make_shared<imagecpp::Model>(runtime_, "image.ocr.tesseract", load_options);
+            });
+            const imagecpp::OcrResult result = imagecpp::ocr(*model, *image, options);
             const imagecpp::OcrInfo info = result.info();
             detail::Json regions = detail::Json::array();
             for (size_t index = 0; index < result.size(); ++index) {
@@ -584,8 +593,10 @@ class OperationApi::Impl final {
             const std::lock_guard<std::mutex> lock(model_mutex_);
             imagecpp_model_options load_options = model_options(config_, config_.depth_model_path);
             load_options.device = IMAGECPP_DEVICE_AUTO;
-            imagecpp::Model model(runtime_, "image.depth.depth-anything", load_options);
-            const imagecpp::DepthResult result = imagecpp::depth(model, *image, options);
+            const std::shared_ptr<imagecpp::Model> model = model_cache_.acquire("depth", [&] {
+                return std::make_shared<imagecpp::Model>(runtime_, "image.depth.depth-anything", load_options);
+            });
+            const imagecpp::DepthResult result = imagecpp::depth(*model, *image, options);
             const imagecpp_depth_info info = result.info();
             imagecpp::Image depth_image = visualized_float_map(info.depth, invert);
             if (detail::request_value(request, "response").value_or("json") == "image") {
@@ -631,8 +642,9 @@ class OperationApi::Impl final {
             }
             const std::lock_guard<std::mutex> lock(model_mutex_);
             const imagecpp_model_options load_options = model_options(config_, config_.clip_model_path);
-            imagecpp::Model model(runtime_, "image.embed.clip", load_options);
-            const imagecpp::EmbeddingResult result = imagecpp::embed_image(model, *image);
+            const std::shared_ptr<imagecpp::Model> model = model_cache_.acquire(
+                "clip", [&] { return std::make_shared<imagecpp::Model>(runtime_, "image.embed.clip", load_options); });
+            const imagecpp::EmbeddingResult result = imagecpp::embed_image(*model, *image);
             detail::set_json(response, 200,
                              {{"dimensions", result.size()},
                               {"embedding", std::vector<float>(result.data(), result.data() + result.size())}});
@@ -656,8 +668,9 @@ class OperationApi::Impl final {
             }
             const std::lock_guard<std::mutex> lock(model_mutex_);
             const imagecpp_model_options load_options = model_options(config_, config_.clip_model_path);
-            imagecpp::Model model(runtime_, "image.embed.clip", load_options);
-            const imagecpp::EmbeddingResult result = imagecpp::embed_text(model, *text);
+            const std::shared_ptr<imagecpp::Model> model = model_cache_.acquire(
+                "clip", [&] { return std::make_shared<imagecpp::Model>(runtime_, "image.embed.clip", load_options); });
+            const imagecpp::EmbeddingResult result = imagecpp::embed_text(*model, *text);
             detail::set_json(response, 200,
                              {{"dimensions", result.size()},
                               {"embedding", std::vector<float>(result.data(), result.data() + result.size())}});
@@ -682,8 +695,10 @@ class OperationApi::Impl final {
             const std::vector<std::string> labels = classification_labels(request);
             const std::lock_guard<std::mutex> lock(model_mutex_);
             const imagecpp_model_options load_options = model_options(config_, config_.clip_model_path);
-            imagecpp::Model model(runtime_, "image.classify.clip", load_options);
-            const imagecpp::ClassificationResult result = imagecpp::classify(model, *image, labels);
+            const std::shared_ptr<imagecpp::Model> model = model_cache_.acquire("clip", [&] {
+                return std::make_shared<imagecpp::Model>(runtime_, "image.classify.clip", load_options);
+            });
+            const imagecpp::ClassificationResult result = imagecpp::classify(*model, *image, labels);
             detail::Json classifications = detail::Json::array();
             for (size_t index = 0; index < result.size(); ++index) {
                 const imagecpp::ClassificationInfo item = result.at(index);
@@ -700,17 +715,19 @@ class OperationApi::Impl final {
         }
     }
 
-    std::unique_ptr<imagecpp::Model> load_upscaler(uint32_t factor) {
+    std::shared_ptr<imagecpp::Model> load_upscaler(uint32_t factor) {
         if (factor <= 1) {
             return nullptr;
         }
-        imagecpp_upscaler_model_options options{};
-        imagecpp_upscaler_model_options_init(&options);
-        options.model_path = config_.upscaler_model_path.c_str();
-        options.threads = config_.threads;
-        options.device = config_.device;
-        options.tile_size = config_.upscaler_tile_size;
-        return std::make_unique<imagecpp::Model>(runtime_, options);
+        return model_cache_.acquire("upscaler", [&] {
+            imagecpp_upscaler_model_options options{};
+            imagecpp_upscaler_model_options_init(&options);
+            options.model_path = config_.upscaler_model_path.c_str();
+            options.threads = config_.threads;
+            options.device = config_.device;
+            options.tile_size = config_.upscaler_tile_size;
+            return std::make_shared<imagecpp::Model>(runtime_, options);
+        });
     }
 
     void check_output_limit(const imagecpp_const_image_view &image) const {
@@ -740,8 +757,10 @@ class OperationApi::Impl final {
             const imagecpp_segment_options options = segment_options(request, points);
             const std::lock_guard<std::mutex> lock(model_mutex_);
             const imagecpp_model_options load_options = model_options(config_, config_.segment_model_path);
-            imagecpp::Model model(runtime_, "image.segment.sam", load_options);
-            imagecpp::Session session(model);
+            const std::shared_ptr<imagecpp::Model> model = model_cache_.acquire("segment", [&] {
+                return std::make_shared<imagecpp::Model>(runtime_, "image.segment.sam", load_options);
+            });
+            imagecpp::Session session(*model);
             session.set_image(*image);
             const imagecpp::SegmentResult result = session.segment(options);
             detail::Json segments = detail::Json::array();
@@ -777,8 +796,10 @@ class OperationApi::Impl final {
             const imagecpp_detect_options options = detect_options(request, prompt, positive_boxes, negative_boxes);
             const std::lock_guard<std::mutex> lock(model_mutex_);
             const imagecpp_model_options load_options = model_options(config_, config_.detect_model_path);
-            imagecpp::Model model(runtime_, "image.detect.sam3", load_options);
-            imagecpp::Session session(model);
+            const std::shared_ptr<imagecpp::Model> model = model_cache_.acquire("detect", [&] {
+                return std::make_shared<imagecpp::Model>(runtime_, "image.detect.sam3", load_options);
+            });
+            imagecpp::Session session(*model);
             session.set_image(*image);
             const imagecpp::DetectionResult result = session.detect(options);
             detail::Json detections = detail::Json::array();
@@ -829,9 +850,11 @@ class OperationApi::Impl final {
             check_scaled_output_limit(*image, options.upscale_factor);
             const std::lock_guard<std::mutex> lock(model_mutex_);
             const imagecpp_model_options load_options = model_options(config_, config_.segment_model_path);
-            imagecpp::Model model(runtime_, "image.segment.sam", load_options);
-            imagecpp::Session session(model);
-            std::unique_ptr<imagecpp::Model> upscaler = load_upscaler(options.upscale_factor);
+            const std::shared_ptr<imagecpp::Model> model = model_cache_.acquire("segment", [&] {
+                return std::make_shared<imagecpp::Model>(runtime_, "image.segment.sam", load_options);
+            });
+            imagecpp::Session session(*model);
+            const std::shared_ptr<imagecpp::Model> upscaler = load_upscaler(options.upscale_factor);
             const imagecpp::CutoutResult result = imagecpp::cutout(session, upscaler.get(), *image, options);
             const imagecpp::CutoutInfo info = result.info();
             check_output_limit(info.image);
@@ -896,9 +919,11 @@ class OperationApi::Impl final {
             check_scaled_output_limit(*image, options.upscale_factor);
             const std::lock_guard<std::mutex> lock(model_mutex_);
             const imagecpp_model_options load_options = model_options(config_, config_.detect_model_path);
-            imagecpp::Model model(runtime_, "image.detect.sam3", load_options);
-            imagecpp::Session session(model);
-            std::unique_ptr<imagecpp::Model> upscaler = load_upscaler(options.upscale_factor);
+            const std::shared_ptr<imagecpp::Model> model = model_cache_.acquire("detect", [&] {
+                return std::make_shared<imagecpp::Model>(runtime_, "image.detect.sam3", load_options);
+            });
+            imagecpp::Session session(*model);
+            const std::shared_ptr<imagecpp::Model> upscaler = load_upscaler(options.upscale_factor);
             const imagecpp::GroundedCutoutResult result =
                 imagecpp::grounded_cutout(session, upscaler.get(), *image, options);
             const imagecpp::GroundedCutoutInfo info = result.info();
@@ -927,22 +952,24 @@ class OperationApi::Impl final {
         }
     }
 
-    std::unique_ptr<imagecpp::Model> load_diffusion_model() {
-        imagecpp_diffusion_model_options options{};
-        imagecpp_diffusion_model_options_init(&options);
-        options.model_path = nullable_path(config_.diffusion_checkpoint_path);
-        options.diffusion_model_path = nullable_path(config_.diffusion_model_path);
-        options.vae_path = nullable_path(config_.vae_model_path);
-        options.clip_l_path = nullable_path(config_.clip_l_model_path);
-        options.clip_g_path = nullable_path(config_.clip_g_model_path);
-        options.t5xxl_path = nullable_path(config_.t5xxl_model_path);
-        options.llm_path = nullable_path(config_.llm_model_path);
-        options.threads = config_.threads;
-        options.device = config_.device;
-        options.flash_attention = config_.diffusion_flash_attention ? 1 : 0;
-        options.keep_text_encoder_on_cpu = config_.keep_text_encoder_on_cpu ? 1 : 0;
-        options.keep_vae_on_cpu = config_.keep_vae_on_cpu ? 1 : 0;
-        return std::make_unique<imagecpp::Model>(runtime_, options);
+    std::shared_ptr<imagecpp::Model> load_diffusion_model() {
+        return model_cache_.acquire("diffusion", [&] {
+            imagecpp_diffusion_model_options options{};
+            imagecpp_diffusion_model_options_init(&options);
+            options.model_path = nullable_path(config_.diffusion_checkpoint_path);
+            options.diffusion_model_path = nullable_path(config_.diffusion_model_path);
+            options.vae_path = nullable_path(config_.vae_model_path);
+            options.clip_l_path = nullable_path(config_.clip_l_model_path);
+            options.clip_g_path = nullable_path(config_.clip_g_model_path);
+            options.t5xxl_path = nullable_path(config_.t5xxl_model_path);
+            options.llm_path = nullable_path(config_.llm_model_path);
+            options.threads = config_.threads;
+            options.device = config_.device;
+            options.flash_attention = config_.diffusion_flash_attention ? 1 : 0;
+            options.keep_text_encoder_on_cpu = config_.keep_text_encoder_on_cpu ? 1 : 0;
+            options.keep_vae_on_cpu = config_.keep_vae_on_cpu ? 1 : 0;
+            return std::make_shared<imagecpp::Model>(runtime_, options);
+        });
     }
 
     void handle_generate(const httplib::Request &request, httplib::Response &response, bool editing) {
@@ -1045,7 +1072,7 @@ class OperationApi::Impl final {
         }
 
         const std::lock_guard<std::mutex> lock(model_mutex_);
-        std::unique_ptr<imagecpp::Model> model = load_diffusion_model();
+        const std::shared_ptr<imagecpp::Model> model = load_diffusion_model();
         const imagecpp::ImageResult result = imagecpp::generate(*model, options);
         if (result.size() == 1 && parameters.value("response").value_or("json") == "image") {
             check_output_limit(result.at(0));
@@ -1075,14 +1102,8 @@ class OperationApi::Impl final {
             }
             check_scaled_output_limit(*image, factor);
             const std::lock_guard<std::mutex> lock(model_mutex_);
-            imagecpp_upscaler_model_options load_options{};
-            imagecpp_upscaler_model_options_init(&load_options);
-            load_options.model_path = config_.upscaler_model_path.c_str();
-            load_options.threads = config_.threads;
-            load_options.device = config_.device;
-            load_options.tile_size = config_.upscaler_tile_size;
-            imagecpp::Model model(runtime_, load_options);
-            const imagecpp::ImageResult result = imagecpp::upscale(model, *image, factor);
+            const std::shared_ptr<imagecpp::Model> model = load_upscaler(factor);
+            const imagecpp::ImageResult result = imagecpp::upscale(*model, *image, factor);
             if (result.size() == 0) {
                 throw std::runtime_error("upscaler returned no image");
             }
@@ -1104,6 +1125,7 @@ class OperationApi::Impl final {
     imagecpp::Runtime &runtime_;
     const HttpServerConfig &config_;
     std::mutex &model_mutex_;
+    ModelCache model_cache_;
 };
 
 OperationApi::OperationApi(imagecpp::Runtime &runtime, const HttpServerConfig &config, std::mutex &model_mutex)
@@ -1112,5 +1134,9 @@ OperationApi::OperationApi(imagecpp::Runtime &runtime, const HttpServerConfig &c
 OperationApi::~OperationApi() = default;
 
 void OperationApi::register_routes(httplib::Server &server) { implementation_->register_routes(server); }
+
+ModelCacheInfo OperationApi::model_cache_info() const { return implementation_->model_cache_info(); }
+
+size_t OperationApi::clear_model_cache() { return implementation_->clear_model_cache(); }
 
 } // namespace imagecpp::server

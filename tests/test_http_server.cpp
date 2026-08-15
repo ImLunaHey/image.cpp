@@ -48,6 +48,8 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
     const httplib::Result playground_javascript = client.Get("/assets/playground.js");
     const httplib::Result service_info = client.Get("/v1/info");
     const httplib::Result health = client.Get("/healthz");
+    const httplib::Result models = client.Get("/v1/models");
+    const httplib::Result cleared_models = client.Delete("/v1/models/cache");
     const httplib::Result operations = client.Get("/v1/operations");
     const httplib::Result missing = client.Get("/does-not-exist");
     const std::string resize_source = "P6\n2 2\n255\n\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
@@ -69,6 +71,9 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         playground_javascript->body.find("/v1/remove-background") != std::string::npos && service_info &&
         service_info->status == 200 && service_info->body.find("\"name\":\"image.cpp\"") != std::string::npos &&
         health && health->status == 200 && health->body.find("\"status\":\"ok\"") != std::string::npos && operations &&
+        models && models->status == 200 && models->body.find("\"capacity\":1") != std::string::npos &&
+        models->body.find("\"loaded_families\":[]") != std::string::npos && cleared_models &&
+        cleared_models->status == 200 && cleared_models->body.find("\"removed\":0") != std::string::npos &&
         operations->status == 200 && operations->body.find("\"operations\"") != std::string::npos && missing &&
         missing->status == 404 && missing->body.find("not_found") != std::string::npos && resized &&
         resized->status == 200 && resized->get_header_value("Content-Type") == "image/png" &&
@@ -131,6 +136,8 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         print_result("playground JavaScript", playground_javascript);
         print_result("service info", service_info);
         print_result("health", health);
+        print_result("models", models);
+        print_result("cleared models", cleared_models);
         print_result("operations", operations);
         print_result("missing", missing);
         print_result("resized", resized);
@@ -159,6 +166,8 @@ bool run_analysis_requests(imagecpp::server::HttpServerConfig config, const std:
         {"labels", "[\"cat\",\"dog\",\"car\"]", "", ""},
     };
     const httplib::Result classification = client.Post("/v1/classify", classification_request);
+    const httplib::Result models = client.Get("/v1/models");
+    const httplib::Result cleared_models = client.Delete("/v1/models/cache");
     const bool passed =
         health && health->status == 200 && health->body.find("\"depth\":true") != std::string::npos &&
         health->body.find("\"clip\":true") != std::string::npos &&
@@ -169,7 +178,11 @@ bool run_analysis_requests(imagecpp::server::HttpServerConfig config, const std:
         image_embedding->body.find("\"embedding\"") != std::string::npos && text_embedding &&
         text_embedding->status == 200 && text_embedding->body.find("\"embedding\"") != std::string::npos &&
         classification && classification->status == 200 &&
-        classification->body.find("\"label\":\"cat\"") != std::string::npos;
+        classification->body.find("\"label\":\"cat\"") != std::string::npos && models && models->status == 200 &&
+        models->body.find("\"hits\":2") != std::string::npos &&
+        models->body.find("\"loaded_families\":[\"clip\"]") != std::string::npos && cleared_models &&
+        cleared_models->status == 200 && cleared_models->body.find("\"removed\":1") != std::string::npos &&
+        cleared_models->body.find("\"loaded_families\":[]") != std::string::npos;
     server.stop();
     listener.join();
     if (!passed) {
@@ -179,6 +192,8 @@ bool run_analysis_requests(imagecpp::server::HttpServerConfig config, const std:
         print_result("image embedding", image_embedding);
         print_result("text embedding", text_embedding);
         print_result("classification", classification);
+        print_result("models", models);
+        print_result("cleared models", cleared_models);
     }
     return passed;
 }

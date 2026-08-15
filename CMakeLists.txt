@@ -504,6 +504,7 @@ if(IMAGECPP_BUILD_HTTP_SERVER)
     add_library(imagecpp_http_server STATIC
         src/server/http_common.cpp
         src/server/http_server.cpp
+        src/server/model_cache.cpp
         src/server/operation_api.cpp
         src/server/playground.cpp
     )
