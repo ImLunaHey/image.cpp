@@ -160,11 +160,25 @@ cancellation. The native HTTP/SSE layer exposes the implemented operation
 catalog through the public library API. It uses that callback directly for VLM
 backpressure and disconnect cancellation, fixes model paths at process
 startup, and keeps transport concerns out of providers.
+
+The service owns two narrow lifecycle components above the operation adapter.
+A bounded least-recently-used cache returns shared model leases for non-VLM
+families; eviction removes reuse without invalidating a request already holding
+a lease. The paired VLM stays resident separately because it owns a reusable
+language context. A bounded native job manager owns copied requests, worker
+threads, lifecycle state, cancellation flags, and retained response bytes. It
+has no HTTP dependency; the HTTP adapter translates its snapshots and restores
+the original operation response when clients fetch a result. Waiting work is
+cancelled immediately. Running non-VLM kernels currently observe cancellation
+at the provider boundary and have their output discarded on return.
+
 The server also embeds its playground HTML, CSS, and JavaScript as immutable
 compiled data. Browsers call only the same public HTTP endpoints; the UI adds no
 filesystem asset lookup, frontend server, package manager, subprocess, or model
-provider dependency. Non-browser requests to `/` retain the service-info JSON,
-while browsers receive the playground through content negotiation.
+provider dependency. The Jobs tray is a client of the same lifecycle API, and
+parameter presets remain browser-local. Non-browser requests to `/` retain the
+service-info JSON, while browsers receive the playground through content
+negotiation.
 
 llama.cpp examples, tools, server, subprocess, and video components are not
 built or invoked.

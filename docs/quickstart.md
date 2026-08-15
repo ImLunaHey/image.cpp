@@ -219,7 +219,8 @@ configured at startup:
   --vlm-model models/SmolVLM-256M-Instruct-Q8_0.gguf \
   --vlm-projection models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf \
   --segment-model models/edgetam_q4_0.ggml \
-  --upscaler-model models/RealESRGAN_x4plus_anime_6B.pth
+  --upscaler-model models/RealESRGAN_x4plus_anime_6B.pth \
+  --model-cache-size 2 --job-workers 2
 
 # Then open http://127.0.0.1:8080/playground in a browser.
 
@@ -234,6 +235,10 @@ curl --no-buffer -H 'Accept: text/event-stream' \
 
 curl --fail -F image=@input.jpg -F 'points=[[640,420,true]]' \
   -F upscale=4 http://127.0.0.1:8080/v1/cutout --output cutout.png
+
+# Queue work without holding the request open, then poll the returned status_url.
+curl --fail -H 'Prefer: respond-async' -F image=@input.jpg \
+  -F 'points=[[640,420,true]]' http://127.0.0.1:8080/v1/cutout
 ```
 
 `GET /healthz` reports configured model families, and `GET /v1/operations`
@@ -242,8 +247,11 @@ startup; clients cannot select arbitrary server files. The server accepts raw
 image bodies and multipart uploads, limits requests to 32 MiB and outputs to
 about 67 megapixels by default, and binds only to `127.0.0.1` unless explicitly
 configured otherwise. The browser playground is embedded in the executable and
-calls these same endpoints; it does not add a Node, Python, CDN, or runtime-file
-dependency. See the complete [HTTP API](http-api.md).
+calls these same endpoints. Its native Jobs tray can queue any operation,
+cancel waiting work, reopen retained results, release warm non-VLM models, and
+store parameter-only presets in browser local storage. It does not add a Node,
+Python, CDN, or runtime-file dependency. See the complete
+[HTTP API](http-api.md).
 
 The same ownership model applies to semantic results:
 

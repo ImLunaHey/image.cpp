@@ -137,18 +137,24 @@ curl --no-buffer -H 'Accept: text/event-stream' \
 
 curl --fail -F image=@input.jpg -F 'points=[[640,420,true]]' \
   http://127.0.0.1:8080/v1/cutout --output subject.png
+
+curl --fail -H 'Prefer: respond-async' \
+  -F image=@input.jpg -F prompt=cat \
+  http://127.0.0.1:8080/v1/detect
 ```
 
 Open `http://127.0.0.1:8080/playground` to use the same operations through the
 embedded studio. It supports drag/drop and paste, model availability, visual
 results, JSON downloads, streaming VLM text, and click prompts for segmentation
-and cutout. Its HTML, CSS, and JavaScript are compiled into `imagecpp`; there is
-no separate frontend installation or runtime asset directory.
+and cutout. Long work can run through its bounded background queue with live
+status, cancellation, retained results, reusable parameter presets, and model
+cache controls. Its HTML, CSS, and JavaScript are compiled into `imagecpp`;
+there is no separate frontend installation or runtime asset directory.
 
 The service binds to loopback by default. See the [HTTP API](docs/http-api.md)
 for resize, OCR, depth, embeddings, classification, segmentation, detection,
 cutout workflows, generation, editing, upscaling, VLM streaming, limits,
-errors, and network-exposure guidance.
+background jobs, model lifecycle, errors, and network-exposure guidance.
 
 Download the validated 15 MB EdgeTAM model and run real point- or box-prompted
 segmentation:

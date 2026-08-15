@@ -108,7 +108,9 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
         playground_javascript->body.find("/v1/jobs?limit=50") != std::string::npos &&
         playground_javascript->body.find("imagecpp.presets.v1") != std::string::npos && service_info &&
         service_info->status == 200 && service_info->body.find("\"name\":\"image.cpp\"") != std::string::npos &&
-        health && health->status == 200 && health->body.find("\"status\":\"ok\"") != std::string::npos &&
+        service_info->body.find("/v1/models/cache") != std::string::npos &&
+        service_info->body.find("/v1/jobs/{id}/result") != std::string::npos && health && health->status == 200 &&
+        health->body.find("\"status\":\"ok\"") != std::string::npos &&
         health->body.find("\"worker_count\":1") != std::string::npos && operations && models && models->status == 200 &&
         models->body.find("\"capacity\":1") != std::string::npos &&
         models->body.find("\"loaded_families\":[]") != std::string::npos && cleared_models &&

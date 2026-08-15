@@ -340,12 +340,12 @@ class HttpServer::Impl final {
             set_json(response, 200,
                      {{"name", "image.cpp"},
                       {"version", imagecpp_version_string()},
-                      {"endpoints", {"/playground", "/healthz",        "/v1/info",       "/v1/operations",
-                                     "/v1/resize",  "/v1/models",      "/v1/jobs",       "/v1/ocr",
-                                     "/v1/depth",   "/v1/embed/image", "/v1/embed/text", "/v1/classify",
-                                     "/v1/segment", "/v1/detect",      "/v1/cutout",     "/v1/remove-background",
-                                     "/v1/extract", "/v1/generate",    "/v1/edit",       "/v1/upscale",
-                                     "/v1/caption", "/v1/ask"}}});
+                      {"endpoints",
+                       {"/playground",      "/healthz",   "/v1/info",        "/v1/operations",        "/v1/models",
+                        "/v1/models/cache", "/v1/jobs",   "/v1/jobs/{id}",   "/v1/jobs/{id}/result",  "/v1/resize",
+                        "/v1/ocr",          "/v1/depth",  "/v1/embed/image", "/v1/embed/text",        "/v1/classify",
+                        "/v1/segment",      "/v1/detect", "/v1/cutout",      "/v1/remove-background", "/v1/extract",
+                        "/v1/generate",     "/v1/edit",   "/v1/upscale",     "/v1/caption",           "/v1/ask"}}});
         };
         server_.Get("/", [set_service_info](const httplib::Request &request, httplib::Response &response) {
             if (request.get_header_value("Accept").find("text/html") != std::string::npos) {

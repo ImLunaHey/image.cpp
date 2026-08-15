@@ -23,11 +23,13 @@ Only configure the model families the process should expose:
 ```
 
 Model paths are accepted only at startup. HTTP clients cannot select an
-arbitrary file from the server's filesystem. Except for the VLM, configured
-models are loaded for one request and then released so enabling several large
-families does not retain all their weights in memory. Model-backed requests are
-serialized because provider instances are not yet promised to be thread-safe;
-health and non-model routes remain available concurrently.
+arbitrary file from the server's filesystem. The VLM remains resident because
+it owns a reusable language context. Other configured families use a bounded
+least-recently-used cache: one family remains warm by default, while evicted
+models stay alive until any in-flight request releases its shared lease.
+Model-backed requests are serialized because provider instances are not yet
+promised to be thread-safe; health and non-model routes remain available
+concurrently.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -36,6 +38,11 @@ health and non-model routes remain available concurrently.
 | `--max-output-mp` | `67` | Maximum output pixels, in decimal megapixels |
 | `--threads` | automatic | CPU worker threads |
 | `--cpu`, `--gpu` | automatic | Preferred model compute device; automatic is best for mixed families |
+| `--model-cache-size` | `1` | Warm non-VLM model families; `0` loads per request and retains none |
+| `--job-workers` | `1` | Native background workers, at most 16 |
+| `--job-queue` | `16` | Maximum waiting jobs before submissions return `429` |
+| `--job-retain` | `64` | Maximum retained terminal jobs and response bodies |
+| `--job-ttl` | `900` | Terminal-job retention in seconds |
 | `--vlm-model`, `--vlm-projection` | unset | Matching VLM language and projection GGUFs |
 | `--segment-model` | unset | SAM 2, SAM 3, or EdgeTAM model |
 | `--detect-model` | unset | Full SAM 3 open-vocabulary model |
@@ -58,6 +65,12 @@ results, and downloads image or JSON responses. Segmentation and cutout support
 positive click prompts and Shift-click negative prompts in source-image
 coordinates. Caption and VQA can render their SSE response incrementally.
 
+Every operation can instead run in the native background queue. The Jobs tray
+shows queue position, lifecycle progress, cancellation, retained results, and
+model-cache state without blocking the current workspace. Parameter presets
+are stored only in that browser's local storage; input image bytes and model
+paths are never stored in a preset.
+
 The HTML, CSS, and JavaScript are compiled into the `imagecpp` executable. No
 Node runtime, frontend server, CDN, network font, or asset directory is needed.
 A browser request to `/` also receives the playground; clients without an
@@ -72,6 +85,12 @@ returns that JSON explicitly.
 | `GET /healthz` | Process and configured-model status | none |
 | `GET /v1/info` | Service version and endpoint list | none |
 | `GET /v1/operations` | Operations compiled into the binary | none |
+| `GET /v1/models` | Model cache and resident-VLM state | none |
+| `DELETE /v1/models/cache` | Release cached non-VLM models | none |
+| `GET /v1/jobs` | Recent and active background jobs | none |
+| `GET /v1/jobs/{id}` | One job's lifecycle state | none |
+| `GET /v1/jobs/{id}/result` | Original response after completion | none |
+| `DELETE /v1/jobs/{id}` | Request cancellation | none |
 | `POST /v1/resize` | Encoded image | none |
 | `POST /v1/ocr` | Text and document-region JSON | OCR |
 | `POST /v1/depth` | Depth JSON or encoded visualization | depth |
@@ -91,6 +110,66 @@ returns that JSON explicitly.
 
 Unconfigured model endpoints return `503 model_not_configured`. Caption and
 VQA retain `503 model_not_loaded` when their paired VLM files are absent.
+
+## Background jobs
+
+All 16 `POST` operations accept `Prefer: respond-async`. The equivalent
+`async=true` query or multipart field is also supported. A successful
+submission returns `202 Accepted`, `Preference-Applied: respond-async`, and a
+`Location` header naming the job:
+
+```sh
+curl --fail -D job-headers.txt -H 'Prefer: respond-async' \
+  -F image=@input.jpg -F prompt=cat \
+  http://127.0.0.1:8080/v1/detect
+```
+
+```json
+{
+  "id": "job-0000000000000001",
+  "operation": "detect",
+  "status": "queued",
+  "progress": 0.0,
+  "stage": "queued",
+  "queue_position": 1,
+  "status_url": "/v1/jobs/job-0000000000000001",
+  "result_url": "/v1/jobs/job-0000000000000001/result"
+}
+```
+
+Poll `status_url` until `status` is `completed`, `failed`, or `cancelled`, then
+fetch `result_url`. The result preserves the original HTTP status, media type,
+body, and application response headers, so a completed PNG job is still a PNG
+and a provider error retains its normal JSON envelope. `GET /v1/jobs?limit=50`
+lists newest jobs first and includes queue capacity and worker counts. Limits
+above 100 are clamped; invalid limits return `400`.
+
+`DELETE status_url` cancels a waiting job immediately. A running job moves to
+`cancellation_requested`; current non-VLM provider kernels cannot yet be
+preempted, so their output is discarded and the job becomes `cancelled` when
+the provider returns. Existing foreground VLM SSE retains cooperative
+disconnect cancellation. Async SSE is deliberately rejected with
+`400 async_stream_unsupported`; a background caption or VQA job returns its
+complete JSON result instead.
+
+Terminal jobs and their response bodies are bounded by both `--job-retain` and
+`--job-ttl`. A result that has expired returns `404 job_not_found`. A full
+waiting queue returns `429 job_queue_full` with `Retry-After: 1`.
+
+## Model lifecycle
+
+`GET /v1/models` reports cache capacity, loaded families in most-recently-used
+order, hits, misses, evictions, clears, and whether the paired VLM is resident.
+The same cache and job counters are included in `GET /healthz`.
+
+```sh
+curl --fail http://127.0.0.1:8080/v1/models
+curl --fail -X DELETE http://127.0.0.1:8080/v1/models/cache
+```
+
+Clearing the cache removes future reuse immediately. Shared leases keep any
+currently executing request safe; the model is destroyed after that request
+releases its lease. The resident VLM is not affected by this endpoint.
 
 ## Image requests and responses
 
