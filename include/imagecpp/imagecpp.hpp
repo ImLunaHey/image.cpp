@@ -480,6 +480,100 @@ inline DepthResult depth(const Model &model, const Image &image, const imagecpp_
     return depth(model, image.view(), options);
 }
 
+struct OcrInfo {
+    std::string text;
+    std::string language;
+    float mean_confidence = 0.0F;
+    size_t region_count = 0;
+};
+
+struct TextRegionInfo {
+    imagecpp_text_region_level level = IMAGECPP_TEXT_REGION_WORD;
+    std::string text;
+    imagecpp_box box{};
+    float confidence = 0.0F;
+    size_t block_index = IMAGECPP_NO_INDEX;
+    size_t paragraph_index = IMAGECPP_NO_INDEX;
+    size_t line_index = IMAGECPP_NO_INDEX;
+    size_t word_index = IMAGECPP_NO_INDEX;
+    imagecpp_text_block_type block_type = IMAGECPP_TEXT_BLOCK_UNKNOWN;
+    imagecpp_line_segment baseline{};
+    bool has_baseline = false;
+    imagecpp_text_orientation orientation = IMAGECPP_TEXT_ORIENTATION_UNKNOWN;
+    imagecpp_writing_direction writing_direction = IMAGECPP_WRITING_DIRECTION_UNKNOWN;
+    imagecpp_textline_order textline_order = IMAGECPP_TEXTLINE_ORDER_UNKNOWN;
+    float deskew_angle_degrees = 0.0F;
+};
+
+class OcrResult final {
+  public:
+    ~OcrResult() { imagecpp_ocr_result_destroy(handle_); }
+
+    OcrResult(const OcrResult &) = delete;
+    OcrResult &operator=(const OcrResult &) = delete;
+
+    OcrResult(OcrResult &&other) noexcept : handle_(std::exchange(other.handle_, nullptr)) {}
+
+    OcrResult &operator=(OcrResult &&other) noexcept {
+        if (this != &other) {
+            imagecpp_ocr_result_destroy(handle_);
+            handle_ = std::exchange(other.handle_, nullptr);
+        }
+        return *this;
+    }
+
+    OcrInfo info() const {
+        imagecpp_ocr_info result{};
+        result.struct_size = sizeof(result);
+        imagecpp_error error{};
+        check(imagecpp_ocr_result_info(handle_, &result, &error), error);
+        return {result.text == nullptr ? "" : result.text, result.language == nullptr ? "" : result.language,
+                result.mean_confidence, result.region_count};
+    }
+
+    size_t size() const noexcept { return imagecpp_ocr_result_region_count(handle_); }
+
+    TextRegionInfo at(size_t index) const {
+        imagecpp_text_region_info result{};
+        result.struct_size = sizeof(result);
+        imagecpp_error error{};
+        check(imagecpp_ocr_result_region_info(handle_, index, &result, &error), error);
+        return {result.level,
+                result.text == nullptr ? "" : result.text,
+                result.box,
+                result.confidence,
+                result.block_index,
+                result.paragraph_index,
+                result.line_index,
+                result.word_index,
+                result.block_type,
+                result.baseline,
+                result.has_baseline != 0,
+                result.orientation,
+                result.writing_direction,
+                result.textline_order,
+                result.deskew_angle_degrees};
+    }
+
+  private:
+    explicit OcrResult(imagecpp_ocr_result *handle) noexcept : handle_(handle) {}
+
+    friend OcrResult ocr(const Model &, const imagecpp_const_image_view &, const imagecpp_ocr_options &);
+
+    imagecpp_ocr_result *handle_ = nullptr;
+};
+
+inline OcrResult ocr(const Model &model, const imagecpp_const_image_view &image, const imagecpp_ocr_options &options) {
+    imagecpp_ocr_result *result = nullptr;
+    imagecpp_error error{};
+    check(imagecpp_ocr(model.get(), &image, &options, &result, &error), error);
+    return OcrResult(result);
+}
+
+inline OcrResult ocr(const Model &model, const Image &image, const imagecpp_ocr_options &options) {
+    return ocr(model, image.view(), options);
+}
+
 struct SegmentInfo {
     imagecpp_const_image_view mask{};
     imagecpp_box box{};

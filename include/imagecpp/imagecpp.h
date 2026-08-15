@@ -24,6 +24,7 @@ extern "C" {
 #define IMAGECPP_VERSION_MINOR 1
 #define IMAGECPP_VERSION_PATCH 0
 #define IMAGECPP_ERROR_MESSAGE_CAPACITY 256
+#define IMAGECPP_NO_INDEX ((size_t)-1)
 
 typedef enum imagecpp_status {
     IMAGECPP_STATUS_OK = 0,
@@ -246,6 +247,104 @@ typedef struct imagecpp_box {
     float y1;
 } imagecpp_box;
 
+typedef enum imagecpp_ocr_page_segmentation {
+    IMAGECPP_OCR_PAGE_AUTO = 0,
+    IMAGECPP_OCR_PAGE_SINGLE_COLUMN = 1,
+    IMAGECPP_OCR_PAGE_SINGLE_BLOCK = 2,
+    IMAGECPP_OCR_PAGE_SINGLE_LINE = 3,
+    IMAGECPP_OCR_PAGE_SINGLE_WORD = 4,
+    IMAGECPP_OCR_PAGE_SPARSE_TEXT = 5,
+    IMAGECPP_OCR_PAGE_RAW_LINE = 6
+} imagecpp_ocr_page_segmentation;
+
+typedef enum imagecpp_text_region_level {
+    IMAGECPP_TEXT_REGION_BLOCK = 0,
+    IMAGECPP_TEXT_REGION_PARAGRAPH = 1,
+    IMAGECPP_TEXT_REGION_LINE = 2,
+    IMAGECPP_TEXT_REGION_WORD = 3
+} imagecpp_text_region_level;
+
+typedef enum imagecpp_text_orientation {
+    IMAGECPP_TEXT_ORIENTATION_PAGE_UP = 0,
+    IMAGECPP_TEXT_ORIENTATION_PAGE_RIGHT = 1,
+    IMAGECPP_TEXT_ORIENTATION_PAGE_DOWN = 2,
+    IMAGECPP_TEXT_ORIENTATION_PAGE_LEFT = 3,
+    IMAGECPP_TEXT_ORIENTATION_UNKNOWN = 4
+} imagecpp_text_orientation;
+
+typedef enum imagecpp_writing_direction {
+    IMAGECPP_WRITING_DIRECTION_LEFT_TO_RIGHT = 0,
+    IMAGECPP_WRITING_DIRECTION_RIGHT_TO_LEFT = 1,
+    IMAGECPP_WRITING_DIRECTION_TOP_TO_BOTTOM = 2,
+    IMAGECPP_WRITING_DIRECTION_UNKNOWN = 3
+} imagecpp_writing_direction;
+
+typedef enum imagecpp_textline_order {
+    IMAGECPP_TEXTLINE_ORDER_LEFT_TO_RIGHT = 0,
+    IMAGECPP_TEXTLINE_ORDER_RIGHT_TO_LEFT = 1,
+    IMAGECPP_TEXTLINE_ORDER_TOP_TO_BOTTOM = 2,
+    IMAGECPP_TEXTLINE_ORDER_UNKNOWN = 3
+} imagecpp_textline_order;
+
+typedef enum imagecpp_text_block_type {
+    IMAGECPP_TEXT_BLOCK_UNKNOWN = 0,
+    IMAGECPP_TEXT_BLOCK_FLOWING_TEXT = 1,
+    IMAGECPP_TEXT_BLOCK_HEADING_TEXT = 2,
+    IMAGECPP_TEXT_BLOCK_PULLOUT_TEXT = 3,
+    IMAGECPP_TEXT_BLOCK_EQUATION = 4,
+    IMAGECPP_TEXT_BLOCK_INLINE_EQUATION = 5,
+    IMAGECPP_TEXT_BLOCK_TABLE = 6,
+    IMAGECPP_TEXT_BLOCK_VERTICAL_TEXT = 7,
+    IMAGECPP_TEXT_BLOCK_CAPTION_TEXT = 8,
+    IMAGECPP_TEXT_BLOCK_FLOWING_IMAGE = 9,
+    IMAGECPP_TEXT_BLOCK_HEADING_IMAGE = 10,
+    IMAGECPP_TEXT_BLOCK_PULLOUT_IMAGE = 11,
+    IMAGECPP_TEXT_BLOCK_HORIZONTAL_LINE = 12,
+    IMAGECPP_TEXT_BLOCK_VERTICAL_LINE = 13,
+    IMAGECPP_TEXT_BLOCK_NOISE = 14
+} imagecpp_text_block_type;
+
+typedef struct imagecpp_line_segment {
+    float x0;
+    float y0;
+    float x1;
+    float y1;
+} imagecpp_line_segment;
+
+typedef struct imagecpp_ocr_options {
+    size_t struct_size;
+    imagecpp_ocr_page_segmentation page_segmentation;
+    uint32_t source_dpi;
+    int preserve_interword_spaces;
+} imagecpp_ocr_options;
+
+typedef struct imagecpp_ocr_info {
+    size_t struct_size;
+    const char *text;
+    const char *language;
+    float mean_confidence;
+    size_t region_count;
+} imagecpp_ocr_info;
+
+typedef struct imagecpp_text_region_info {
+    size_t struct_size;
+    imagecpp_text_region_level level;
+    const char *text;
+    imagecpp_box box;
+    float confidence;
+    size_t block_index;
+    size_t paragraph_index;
+    size_t line_index;
+    size_t word_index;
+    imagecpp_text_block_type block_type;
+    imagecpp_line_segment baseline;
+    int has_baseline;
+    imagecpp_text_orientation orientation;
+    imagecpp_writing_direction writing_direction;
+    imagecpp_textline_order textline_order;
+    float deskew_angle_degrees;
+} imagecpp_text_region_info;
+
 typedef struct imagecpp_segment_options {
     size_t struct_size;
     const imagecpp_point_prompt *points;
@@ -356,6 +455,7 @@ typedef struct imagecpp_classification_result imagecpp_classification_result;
 typedef struct imagecpp_cutout_result imagecpp_cutout_result;
 typedef struct imagecpp_detection_result imagecpp_detection_result;
 typedef struct imagecpp_grounded_cutout_result imagecpp_grounded_cutout_result;
+typedef struct imagecpp_ocr_result imagecpp_ocr_result;
 
 IMAGECPP_API uint32_t imagecpp_version(void);
 IMAGECPP_API const char *imagecpp_version_string(void);
@@ -467,6 +567,17 @@ IMAGECPP_API imagecpp_status imagecpp_depth(const imagecpp_model *model, const i
 IMAGECPP_API imagecpp_status imagecpp_depth_result_info(const imagecpp_depth_result *result,
                                                         imagecpp_depth_info *output, imagecpp_error *error);
 IMAGECPP_API void imagecpp_depth_result_destroy(imagecpp_depth_result *result);
+
+IMAGECPP_API void imagecpp_ocr_options_init(imagecpp_ocr_options *options);
+IMAGECPP_API imagecpp_status imagecpp_ocr(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                                          const imagecpp_ocr_options *options, imagecpp_ocr_result **output,
+                                          imagecpp_error *error);
+IMAGECPP_API imagecpp_status imagecpp_ocr_result_info(const imagecpp_ocr_result *result, imagecpp_ocr_info *output,
+                                                      imagecpp_error *error);
+IMAGECPP_API size_t imagecpp_ocr_result_region_count(const imagecpp_ocr_result *result);
+IMAGECPP_API imagecpp_status imagecpp_ocr_result_region_info(const imagecpp_ocr_result *result, size_t index,
+                                                             imagecpp_text_region_info *output, imagecpp_error *error);
+IMAGECPP_API void imagecpp_ocr_result_destroy(imagecpp_ocr_result *result);
 
 IMAGECPP_API imagecpp_status imagecpp_embed_image(const imagecpp_model *model, const imagecpp_const_image_view *image,
                                                   imagecpp_embedding_result **output, imagecpp_error *error);

@@ -102,6 +102,16 @@ imagecpp_status imagecpp_runtime_create(imagecpp_runtime **output, imagecpp_erro
             IMAGECPP_ARTIFACT_METADATA,
         });
 #endif
+#if defined(IMAGECPP_WITH_TESSERACT)
+        runtime->operations.push_back({
+            "image.ocr.tesseract",
+            "Recognize text with Tesseract",
+            "OCR with document hierarchy, bounding boxes, baselines, orientation, and confidence",
+            IMAGECPP_TASK_OCR,
+            IMAGECPP_ARTIFACT_IMAGE,
+            IMAGECPP_ARTIFACT_TEXT_REGIONS,
+        });
+#endif
 #if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
         runtime->operations.push_back({
             "image.generate.diffusion",

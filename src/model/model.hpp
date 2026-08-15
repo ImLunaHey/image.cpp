@@ -96,6 +96,37 @@ struct ClassificationOutput {
     float score = 0.0F;
 };
 
+struct OcrRequest {
+    imagecpp_ocr_page_segmentation page_segmentation = IMAGECPP_OCR_PAGE_AUTO;
+    uint32_t source_dpi = 300;
+    bool preserve_interword_spaces = false;
+};
+
+struct TextRegionOutput {
+    imagecpp_text_region_level level = IMAGECPP_TEXT_REGION_WORD;
+    std::string text;
+    imagecpp_box box{};
+    float confidence = 0.0F;
+    size_t block_index = IMAGECPP_NO_INDEX;
+    size_t paragraph_index = IMAGECPP_NO_INDEX;
+    size_t line_index = IMAGECPP_NO_INDEX;
+    size_t word_index = IMAGECPP_NO_INDEX;
+    imagecpp_text_block_type block_type = IMAGECPP_TEXT_BLOCK_UNKNOWN;
+    imagecpp_line_segment baseline{};
+    bool has_baseline = false;
+    imagecpp_text_orientation orientation = IMAGECPP_TEXT_ORIENTATION_UNKNOWN;
+    imagecpp_writing_direction writing_direction = IMAGECPP_WRITING_DIRECTION_UNKNOWN;
+    imagecpp_textline_order textline_order = IMAGECPP_TEXTLINE_ORDER_UNKNOWN;
+    float deskew_angle_degrees = 0.0F;
+};
+
+struct OcrOutput {
+    std::string text;
+    std::string language;
+    float mean_confidence = 0.0F;
+    std::vector<TextRegionOutput> regions;
+};
+
 class Session {
   public:
     virtual ~Session() = default;
@@ -115,10 +146,15 @@ class Model {
     virtual std::vector<float> embed_text(const std::string &text);
     virtual std::vector<ClassificationOutput> classify(const imagecpp_const_image_view &image,
                                                        const std::vector<std::string> &labels);
+    virtual OcrOutput ocr(const imagecpp_const_image_view &image, const OcrRequest &request);
 };
 
 #if defined(IMAGECPP_WITH_CLIP)
 std::shared_ptr<Model> load_clip_model(const imagecpp_model_options &options);
+#endif
+
+#if defined(IMAGECPP_WITH_TESSERACT)
+std::shared_ptr<Model> load_tesseract_model(const imagecpp_model_options &options);
 #endif
 
 #if defined(IMAGECPP_WITH_SAM3)

@@ -23,6 +23,12 @@ int main(void) {
     if (depth_options.struct_size != sizeof(depth_options) || depth_options.include_pose != 0) {
         return 9;
     }
+    imagecpp_ocr_options ocr_options;
+    imagecpp_ocr_options_init(&ocr_options);
+    if (ocr_options.struct_size != sizeof(ocr_options) || ocr_options.page_segmentation != IMAGECPP_OCR_PAGE_AUTO ||
+        ocr_options.source_dpi != 300 || ocr_options.preserve_interword_spaces != 0) {
+        return 12;
+    }
     imagecpp_cutout_options cutout_options;
     imagecpp_cutout_options_init(&cutout_options);
     if (cutout_options.struct_size != sizeof(cutout_options) ||

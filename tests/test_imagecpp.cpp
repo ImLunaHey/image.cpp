@@ -70,6 +70,9 @@ void test_version_and_runtime() {
 #if defined(IMAGECPP_TEST_WITH_CLIP)
     expected_count += 2;
 #endif
+#if defined(IMAGECPP_TEST_WITH_TESSERACT)
+    expected_count += 1;
+#endif
 #if defined(IMAGECPP_TEST_WITH_STABLE_DIFFUSION)
     expected_count += 3;
 #endif
@@ -105,6 +108,12 @@ void test_version_and_runtime() {
     ++index;
     require(operations[index].id == "image.classify.clip", "runtime should expose CLIP classification");
     require(operations[index].task == IMAGECPP_TASK_CLASSIFY, "CLIP classification operation task mismatch");
+    ++index;
+#endif
+#if defined(IMAGECPP_TEST_WITH_TESSERACT)
+    require(operations[index].id == "image.ocr.tesseract", "runtime should expose Tesseract OCR");
+    require(operations[index].task == IMAGECPP_TASK_OCR, "Tesseract OCR operation task mismatch");
+    require(operations[index].output_kind == IMAGECPP_ARTIFACT_TEXT_REGIONS, "Tesseract OCR output kind mismatch");
     ++index;
 #endif
 #if defined(IMAGECPP_TEST_WITH_STABLE_DIFFUSION)

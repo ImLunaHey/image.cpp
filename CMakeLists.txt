@@ -25,6 +25,7 @@ set(IMAGECPP_TEST_DIFFUSION_MODEL "" CACHE FILEPATH "Optional diffusion model us
 set(IMAGECPP_TEST_UPSCALER_MODEL "" CACHE FILEPATH "Optional ESRGAN model used by integration tests")
 set(IMAGECPP_TEST_DEPTH_MODEL "" CACHE FILEPATH "Optional Depth Anything model used by integration tests")
 set(IMAGECPP_TEST_CLIP_MODEL "" CACHE FILEPATH "Optional two-tower CLIP GGUF model used by integration tests")
+set(IMAGECPP_TEST_OCR_MODEL "" CACHE FILEPATH "Optional Tesseract traineddata model used by integration tests")
 
 function(imagecpp_enable_warnings target)
     if(MSVC)
@@ -124,7 +125,7 @@ if(IMAGECPP_WITH_TESSERACT)
 
     set(OPENMP_BUILD OFF CACHE BOOL "" FORCE)
     set(GRAPHICS_DISABLED ON CACHE BOOL "" FORCE)
-    set(DISABLED_LEGACY_ENGINE ON CACHE BOOL "" FORCE)
+    set(DISABLED_LEGACY_ENGINE OFF CACHE BOOL "" FORCE)
     set(ENABLE_LTO OFF CACHE BOOL "" FORCE)
     set(ENABLE_NATIVE OFF CACHE BOOL "" FORCE)
     set(BUILD_TRAINING_TOOLS OFF CACHE BOOL "" FORCE)
@@ -147,6 +148,7 @@ if(IMAGECPP_WITH_TESSERACT)
         CXX_VISIBILITY_PRESET hidden
         VISIBILITY_INLINES_HIDDEN YES
     )
+    target_compile_definitions(libtesseract PRIVATE TESSERACT_DISABLE_DEBUG_FONTS=1)
     set_target_properties(tesseract PROPERTIES EXCLUDE_FROM_ALL YES)
     target_sources(imagecpp PRIVATE src/provider/tesseract_provider.cpp)
     target_include_directories(imagecpp PRIVATE
@@ -154,6 +156,14 @@ if(IMAGECPP_WITH_TESSERACT)
     )
     target_link_libraries(imagecpp PRIVATE libtesseract)
     target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_TESSERACT=1)
+
+    imagecpp_add_model_download(
+        imagecpp_model_tesseract_eng
+        eng.traineddata
+        "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/eng.traineddata"
+        7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+        "Tesseract fast English"
+    )
 endif()
 
 if(IMAGECPP_WITH_WEBP)
@@ -371,7 +381,8 @@ foreach(IMAGECPP_STARTER_MODEL_TARGET
         imagecpp_model_edgetam
         imagecpp_model_depth_anything
         imagecpp_model_realesrgan
-        imagecpp_model_clip)
+        imagecpp_model_clip
+        imagecpp_model_tesseract_eng)
     if(TARGET ${IMAGECPP_STARTER_MODEL_TARGET})
         add_dependencies(imagecpp_models_starter ${IMAGECPP_STARTER_MODEL_TARGET})
     endif()
@@ -410,6 +421,7 @@ if(IMAGECPP_BUILD_TESTS)
         $<$<BOOL:${IMAGECPP_WITH_STABLE_DIFFUSION}>:IMAGECPP_TEST_WITH_STABLE_DIFFUSION=1>
         $<$<BOOL:${IMAGECPP_WITH_DEPTH_ANYTHING}>:IMAGECPP_TEST_WITH_DEPTH_ANYTHING=1>
         $<$<BOOL:${IMAGECPP_WITH_CLIP}>:IMAGECPP_TEST_WITH_CLIP=1>
+        $<$<BOOL:${IMAGECPP_WITH_TESSERACT}>:IMAGECPP_TEST_WITH_TESSERACT=1>
     )
     imagecpp_enable_warnings(imagecpp_tests)
     add_test(NAME imagecpp.unit COMMAND imagecpp_tests)
@@ -418,6 +430,19 @@ if(IMAGECPP_BUILD_TESTS)
     imagecpp_enable_warnings(imagecpp_c_api_test)
     set_target_properties(imagecpp_c_api_test PROPERTIES LINKER_LANGUAGE CXX)
     add_test(NAME imagecpp.c-api COMMAND imagecpp_c_api_test)
+    if(IMAGECPP_WITH_TESSERACT AND IMAGECPP_TEST_OCR_MODEL)
+        add_executable(imagecpp_ocr_c_api_test tests/test_ocr_c_api.c)
+        target_link_libraries(imagecpp_ocr_c_api_test PRIVATE imagecpp::imagecpp)
+        imagecpp_enable_warnings(imagecpp_ocr_c_api_test)
+        set_target_properties(imagecpp_ocr_c_api_test PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(
+            NAME imagecpp.c-api.ocr-model
+            COMMAND imagecpp_ocr_c_api_test
+                "${IMAGECPP_TEST_OCR_MODEL}"
+                "${CMAKE_CURRENT_BINARY_DIR}/imagecpp-ocr-fixture.png"
+        )
+        set_tests_properties(imagecpp.c-api.ocr-model PROPERTIES TIMEOUT 30)
+    endif()
     if(IMAGECPP_BUILD_CLI)
         add_test(NAME imagecpp.cli.inspect COMMAND imagecpp_cli inspect)
         add_test(

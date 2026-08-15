@@ -43,6 +43,10 @@ struct imagecpp_classification_result {
     std::vector<imagecpp::detail::ClassificationOutput> outputs;
 };
 
+struct imagecpp_ocr_result {
+    imagecpp::detail::OcrOutput output;
+};
+
 namespace imagecpp::detail {
 namespace {
 
@@ -59,7 +63,8 @@ imagecpp_status translate_exception(imagecpp_error *error, const std::exception 
     return core::fail(error, IMAGECPP_STATUS_INTERNAL, exception.what());
 }
 
-#if defined(IMAGECPP_WITH_SAM3) || defined(IMAGECPP_WITH_DEPTH_ANYTHING) || defined(IMAGECPP_WITH_CLIP)
+#if defined(IMAGECPP_WITH_SAM3) || defined(IMAGECPP_WITH_DEPTH_ANYTHING) || defined(IMAGECPP_WITH_CLIP) ||             \
+    defined(IMAGECPP_WITH_TESSERACT)
 const imagecpp_model_options &validate_model_options(const imagecpp_model_options *options) {
     if (options == nullptr || options->struct_size < sizeof(imagecpp_model_options)) {
         throw std::invalid_argument("model options are null or too small");
@@ -77,6 +82,20 @@ const imagecpp_model_options &validate_model_options(const imagecpp_model_option
     return *options;
 }
 #endif
+
+OcrRequest ocr_request(const imagecpp_ocr_options *options) {
+    if (options == nullptr || options->struct_size < sizeof(imagecpp_ocr_options)) {
+        throw std::invalid_argument("OCR options are null or too small");
+    }
+    if (options->page_segmentation < IMAGECPP_OCR_PAGE_AUTO ||
+        options->page_segmentation > IMAGECPP_OCR_PAGE_RAW_LINE) {
+        throw std::invalid_argument("unknown OCR page segmentation mode");
+    }
+    if (options->source_dpi > 2400) {
+        throw std::invalid_argument("OCR source DPI cannot exceed 2400");
+    }
+    return {options->page_segmentation, options->source_dpi, options->preserve_interword_spaces != 0};
+}
 
 #if defined(IMAGECPP_WITH_STABLE_DIFFUSION)
 const imagecpp_diffusion_model_options &
@@ -273,6 +292,10 @@ std::vector<float> Model::embed_text(const std::string &) {
 std::vector<ClassificationOutput> Model::classify(const imagecpp_const_image_view &, const std::vector<std::string> &) {
     throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support image classification");
 }
+
+OcrOutput Model::ocr(const imagecpp_const_image_view &, const OcrRequest &) {
+    throw Failure(IMAGECPP_STATUS_UNSUPPORTED, "this model does not support OCR");
+}
 } // namespace imagecpp::detail
 
 extern "C" {
@@ -350,6 +373,14 @@ imagecpp_status imagecpp_model_load(const imagecpp_runtime *runtime, const char 
 #else
             (void)options;
             return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED, "CLIP support is not compiled in");
+#endif
+        } else if (std::string_view(operation_id) == "image.ocr.tesseract") {
+#if defined(IMAGECPP_WITH_TESSERACT)
+            const imagecpp_model_options &settings = imagecpp::detail::validate_model_options(options);
+            implementation = imagecpp::detail::load_tesseract_model(settings);
+#else
+            (void)options;
+            return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED, "Tesseract OCR support is not compiled in");
 #endif
         } else {
             return imagecpp::core::fail(error, IMAGECPP_STATUS_UNSUPPORTED, "operation has no model loader");
@@ -792,6 +823,85 @@ imagecpp_status imagecpp_depth_result_info(const imagecpp_depth_result *result, 
 }
 
 void imagecpp_depth_result_destroy(imagecpp_depth_result *result) { delete result; }
+
+void imagecpp_ocr_options_init(imagecpp_ocr_options *options) {
+    if (options != nullptr) {
+        *options = {sizeof(imagecpp_ocr_options), IMAGECPP_OCR_PAGE_AUTO, 300, 0};
+    }
+}
+
+imagecpp_status imagecpp_ocr(const imagecpp_model *model, const imagecpp_const_image_view *image,
+                             const imagecpp_ocr_options *options, imagecpp_ocr_result **output, imagecpp_error *error) {
+    if (output == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "output OCR result pointer is null");
+    }
+    *output = nullptr;
+    if (model == nullptr || model->implementation == nullptr) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT, "model is null");
+    }
+    imagecpp::detail::ImageLayout layout;
+    const imagecpp_status status = imagecpp::detail::validate_const_view(image, layout, error);
+    if (status != IMAGECPP_STATUS_OK) {
+        return status;
+    }
+    try {
+        const imagecpp::detail::OcrRequest request = imagecpp::detail::ocr_request(options);
+        auto result = std::make_unique<imagecpp_ocr_result>();
+        result->output = model->implementation->ocr(*image, request);
+        *output = result.release();
+        return imagecpp::core::succeed(error);
+    } catch (const std::exception &exception) {
+        return imagecpp::detail::translate_exception(error, exception);
+    } catch (...) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INTERNAL, "unexpected OCR failure");
+    }
+}
+
+imagecpp_status imagecpp_ocr_result_info(const imagecpp_ocr_result *result, imagecpp_ocr_info *output,
+                                         imagecpp_error *error) {
+    if (result == nullptr || output == nullptr || output->struct_size < sizeof(imagecpp_ocr_info)) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT,
+                                    "OCR result or output info is null or too small");
+    }
+    *output = {sizeof(imagecpp_ocr_info), result->output.text.c_str(), result->output.language.c_str(),
+               result->output.mean_confidence, result->output.regions.size()};
+    return imagecpp::core::succeed(error);
+}
+
+size_t imagecpp_ocr_result_region_count(const imagecpp_ocr_result *result) {
+    return result == nullptr ? 0 : result->output.regions.size();
+}
+
+imagecpp_status imagecpp_ocr_result_region_info(const imagecpp_ocr_result *result, size_t index,
+                                                imagecpp_text_region_info *output, imagecpp_error *error) {
+    if (result == nullptr || output == nullptr || output->struct_size < sizeof(imagecpp_text_region_info)) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_INVALID_ARGUMENT,
+                                    "OCR result or output region info is null or too small");
+    }
+    if (index >= result->output.regions.size()) {
+        return imagecpp::core::fail(error, IMAGECPP_STATUS_OUT_OF_RANGE, "OCR region index is out of range");
+    }
+    const imagecpp::detail::TextRegionOutput &region = result->output.regions[index];
+    *output = {sizeof(imagecpp_text_region_info),
+               region.level,
+               region.text.c_str(),
+               region.box,
+               region.confidence,
+               region.block_index,
+               region.paragraph_index,
+               region.line_index,
+               region.word_index,
+               region.block_type,
+               region.baseline,
+               region.has_baseline ? 1 : 0,
+               region.orientation,
+               region.writing_direction,
+               region.textline_order,
+               region.deskew_angle_degrees};
+    return imagecpp::core::succeed(error);
+}
+
+void imagecpp_ocr_result_destroy(imagecpp_ocr_result *result) { delete result; }
 
 imagecpp_status imagecpp_embed_image(const imagecpp_model *model, const imagecpp_const_image_view *image,
                                      imagecpp_embedding_result **output, imagecpp_error *error) {
