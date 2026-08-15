@@ -27,6 +27,8 @@ set(IMAGECPP_TEST_UPSCALER_MODEL "" CACHE FILEPATH "Optional ESRGAN model used b
 set(IMAGECPP_TEST_DEPTH_MODEL "" CACHE FILEPATH "Optional Depth Anything model used by integration tests")
 set(IMAGECPP_TEST_CLIP_MODEL "" CACHE FILEPATH "Optional two-tower CLIP GGUF model used by integration tests")
 set(IMAGECPP_TEST_OCR_MODEL "" CACHE FILEPATH "Optional Tesseract traineddata model used by integration tests")
+set(IMAGECPP_TEST_VLM_MODEL "" CACHE FILEPATH "Optional VLM language GGUF used by integration tests")
+set(IMAGECPP_TEST_VLM_PROJECTION_MODEL "" CACHE FILEPATH "Optional VLM projection GGUF used by integration tests")
 
 function(imagecpp_enable_warnings target)
     if(MSVC)
@@ -269,6 +271,21 @@ if(IMAGECPP_WITH_VLM)
     )
     target_link_libraries(imagecpp PRIVATE mtmd llama ggml::ggml)
     target_compile_definitions(imagecpp PRIVATE IMAGECPP_WITH_VLM=1)
+
+    imagecpp_add_model_download(
+        imagecpp_model_smolvlm_q8
+        SmolVLM-256M-Instruct-Q8_0.gguf
+        "https://huggingface.co/ggml-org/SmolVLM-256M-Instruct-GGUF/resolve/b9e4379657e1450d04d02eec8e345667265b0a00/SmolVLM-256M-Instruct-Q8_0.gguf"
+        2a31195d3769c0b0fd0a4906201666108834848db768af11de1d2cef7cd35e65
+        "SmolVLM 256M Instruct Q8_0"
+    )
+    imagecpp_add_model_download(
+        imagecpp_model_smolvlm_mmproj_q8
+        mmproj-SmolVLM-256M-Instruct-Q8_0.gguf
+        "https://huggingface.co/ggml-org/SmolVLM-256M-Instruct-GGUF/resolve/b9e4379657e1450d04d02eec8e345667265b0a00/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf"
+        7e943f7c53f0382a6fc41b6ee0c2def63ba4fded9ab8ed039cc9e2ab905e0edd
+        "SmolVLM 256M vision projection Q8_0"
+    )
 endif()
 
 if(IMAGECPP_WITH_CLIP)
@@ -436,7 +453,9 @@ foreach(IMAGECPP_STARTER_MODEL_TARGET
         imagecpp_model_depth_anything
         imagecpp_model_realesrgan
         imagecpp_model_clip
-        imagecpp_model_tesseract_eng)
+        imagecpp_model_tesseract_eng
+        imagecpp_model_smolvlm_q8
+        imagecpp_model_smolvlm_mmproj_q8)
     if(TARGET ${IMAGECPP_STARTER_MODEL_TARGET})
         add_dependencies(imagecpp_models_starter ${IMAGECPP_STARTER_MODEL_TARGET})
     endif()
@@ -458,6 +477,7 @@ if(IMAGECPP_BUILD_CLI)
         app/main.cpp
         app/model_commands.cpp
         app/ocr_command.cpp
+        app/vlm_command.cpp
     )
     target_compile_features(imagecpp_cli PRIVATE cxx_std_17)
     target_link_libraries(imagecpp_cli PRIVATE imagecpp::imagecpp)
@@ -499,6 +519,19 @@ if(IMAGECPP_BUILD_TESTS)
         )
         set_tests_properties(imagecpp.c-api.ocr-model PROPERTIES TIMEOUT 30)
     endif()
+    if(IMAGECPP_WITH_VLM AND IMAGECPP_TEST_VLM_MODEL AND IMAGECPP_TEST_VLM_PROJECTION_MODEL)
+        add_executable(imagecpp_vlm_c_api_test tests/test_vlm_c_api.c)
+        target_link_libraries(imagecpp_vlm_c_api_test PRIVATE imagecpp::imagecpp)
+        target_compile_definitions(imagecpp_vlm_c_api_test PRIVATE
+            "IMAGECPP_TEST_VLM_MODEL_PATH=\"${IMAGECPP_TEST_VLM_MODEL}\""
+            "IMAGECPP_TEST_VLM_PROJECTION_MODEL_PATH=\"${IMAGECPP_TEST_VLM_PROJECTION_MODEL}\""
+            "IMAGECPP_TEST_IMAGE_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png\""
+        )
+        imagecpp_enable_warnings(imagecpp_vlm_c_api_test)
+        set_target_properties(imagecpp_vlm_c_api_test PROPERTIES LINKER_LANGUAGE CXX)
+        add_test(NAME imagecpp.c-api.vlm-model COMMAND imagecpp_vlm_c_api_test)
+        set_tests_properties(imagecpp.c-api.vlm-model PROPERTIES TIMEOUT 120)
+    endif()
     if(IMAGECPP_BUILD_CLI)
         add_test(NAME imagecpp.cli.inspect COMMAND imagecpp_cli inspect)
         add_test(
@@ -534,6 +567,38 @@ if(IMAGECPP_BUILD_TESTS)
                 DEPENDS imagecpp.c-api.ocr-model
                 PASS_REGULAR_EXPRESSION "\"regions\":\\["
                 TIMEOUT 30
+            )
+        endif()
+        if(IMAGECPP_WITH_VLM AND IMAGECPP_TEST_VLM_MODEL AND IMAGECPP_TEST_VLM_PROJECTION_MODEL)
+            add_test(
+                NAME imagecpp.cli.caption-model
+                COMMAND imagecpp_cli caption
+                    "${IMAGECPP_TEST_VLM_MODEL}"
+                    "${IMAGECPP_TEST_VLM_PROJECTION_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png"
+                    --max-tokens 16
+                    --temperature 0
+                    --cpu
+                    --json
+            )
+            set_tests_properties(imagecpp.cli.caption-model PROPERTIES
+                PASS_REGULAR_EXPRESSION "\"text\":\".+\""
+                TIMEOUT 120
+            )
+            add_test(
+                NAME imagecpp.cli.ask-model
+                COMMAND imagecpp_cli ask
+                    "${IMAGECPP_TEST_VLM_MODEL}"
+                    "${IMAGECPP_TEST_VLM_PROJECTION_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/external/stable-diffusion/assets/a lovely cat.png"
+                    "What animal is in the image? Answer with one word."
+                    --max-tokens 8
+                    --temperature 0
+                    --cpu
+            )
+            set_tests_properties(imagecpp.cli.ask-model PROPERTIES
+                PASS_REGULAR_EXPRESSION "[Cc]at"
+                TIMEOUT 120
             )
         endif()
         if(IMAGECPP_WITH_SAM3 AND IMAGECPP_TEST_SAM_MODEL)

@@ -23,7 +23,7 @@ void initialize_backend() {
     static std::once_flag once;
     std::call_once(once, [] {
         llama_log_set(quiet_log, nullptr);
-        mtmd_log_set(quiet_log, nullptr);
+        mtmd_helper_log_set(quiet_log, nullptr);
         llama_backend_init();
     });
 }
@@ -112,6 +112,17 @@ std::string token_piece(const llama_vocab *vocab, llama_token token) {
         throw Failure(IMAGECPP_STATUS_MODEL_ERROR, "failed to decode generated VLM token");
     }
     return std::string(buffer.data(), static_cast<size_t>(written));
+}
+
+void trim_outer_whitespace(std::string &text) {
+    constexpr const char *whitespace = " \t\n\r\f\v";
+    const size_t first = text.find_first_not_of(whitespace);
+    if (first == std::string::npos) {
+        text.clear();
+        return;
+    }
+    const size_t last = text.find_last_not_of(whitespace);
+    text = text.substr(first, last - first + 1);
 }
 
 struct ModelDeleter {
@@ -276,6 +287,7 @@ class VlmModel final : public Model {
             }
             ++n_past;
         }
+        trim_outer_whitespace(output.text);
         return output;
     }
 
