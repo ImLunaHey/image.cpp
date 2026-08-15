@@ -5,6 +5,7 @@
 #include "imagecpp/imagecpp.hpp"
 #include "json.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -38,6 +39,9 @@ void set_image(httplib::Response &response, const imagecpp_const_image_view &ima
 void set_image(httplib::Response &response, const imagecpp::Image &image,
                imagecpp_file_format format = IMAGECPP_FILE_FORMAT_PNG, int quality = 90, bool lossless = false);
 const char *image_mime_type(imagecpp_file_format format);
+std::string base64_encode(const void *data, size_t size);
+Json encoded_image_json(const imagecpp_const_image_view &image,
+                        imagecpp_file_format format = IMAGECPP_FILE_FORMAT_PNG);
 
 } // namespace imagecpp::server::detail
 

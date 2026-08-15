@@ -296,11 +296,25 @@ class HttpServer::Impl final {
             set_json(response, 200,
                      {{"name", "image.cpp"},
                       {"version", imagecpp_version_string()},
-                      {"endpoints", {"/healthz", "/v1/operations", "/v1/resize", "/v1/caption", "/v1/ask"}}});
+                      {"endpoints",
+                       {"/healthz",      "/v1/operations", "/v1/resize",     "/v1/ocr",
+                        "/v1/depth",     "/v1/embed/image", "/v1/embed/text", "/v1/classify",
+                        "/v1/caption",   "/v1/ask"}}});
         });
         server_.Get("/healthz", [this](const httplib::Request &, httplib::Response &response) {
             set_json(response, 200,
-                     {{"status", "ok"}, {"version", imagecpp_version_string()}, {"vlm_loaded", vlm_ != nullptr}});
+                     {{"status", "ok"},
+                      {"version", imagecpp_version_string()},
+                      {"vlm_loaded", vlm_ != nullptr},
+                      {"configured_models",
+                       {{"segment", !config_.segment_model_path.empty()},
+                        {"detect", !config_.detect_model_path.empty()},
+                        {"depth", !config_.depth_model_path.empty()},
+                        {"clip", !config_.clip_model_path.empty()},
+                        {"ocr", !config_.ocr_model_path.empty()},
+                        {"diffusion", !config_.diffusion_checkpoint_path.empty() || !config_.diffusion_model_path.empty()},
+                        {"upscaler", !config_.upscaler_model_path.empty()},
+                        {"vlm", vlm_ != nullptr}}}});
         });
         server_.Get("/v1/operations", [this](const httplib::Request &, httplib::Response &response) {
             Json operations = Json::array();

@@ -190,6 +190,33 @@ const char *image_mime_type(imagecpp_file_format format) {
     return "application/octet-stream";
 }
 
+std::string base64_encode(const void *data, size_t size) {
+    static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const auto *bytes = static_cast<const unsigned char *>(data);
+    std::string output;
+    output.reserve(((size + 2U) / 3U) * 4U);
+    for (size_t offset = 0; offset < size; offset += 3U) {
+        const uint32_t first = bytes[offset];
+        const uint32_t second = offset + 1U < size ? bytes[offset + 1U] : 0U;
+        const uint32_t third = offset + 2U < size ? bytes[offset + 2U] : 0U;
+        const uint32_t packed = (first << 16U) | (second << 8U) | third;
+        output.push_back(alphabet[(packed >> 18U) & 0x3FU]);
+        output.push_back(alphabet[(packed >> 12U) & 0x3FU]);
+        output.push_back(offset + 1U < size ? alphabet[(packed >> 6U) & 0x3FU] : '=');
+        output.push_back(offset + 2U < size ? alphabet[packed & 0x3FU] : '=');
+    }
+    return output;
+}
+
+Json encoded_image_json(const imagecpp_const_image_view &image, imagecpp_file_format format) {
+    const imagecpp::Blob encoded = imagecpp::encode(image, format);
+    return {{"format", format == IMAGECPP_FILE_FORMAT_PNG ? "png" : "encoded"},
+            {"mime_type", image_mime_type(format)},
+            {"width", image.width},
+            {"height", image.height},
+            {"base64", base64_encode(encoded.data(), encoded.size())}};
+}
+
 void set_image(httplib::Response &response, const imagecpp_const_image_view &image, imagecpp_file_format format,
                int quality, bool lossless) {
     imagecpp_encode_options options{};

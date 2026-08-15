@@ -71,6 +71,38 @@ int serve_command(int argc, char **argv) {
             config.vlm_model_path = next_value(argc, argv, index, option);
         } else if (option == "--vlm-projection") {
             config.vlm_projection_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--segment-model") {
+            config.segment_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--detect-model") {
+            config.detect_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--depth-model") {
+            config.depth_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--clip-model") {
+            config.clip_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--ocr-model") {
+            config.ocr_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--diffusion-checkpoint") {
+            config.diffusion_checkpoint_path = next_value(argc, argv, index, option);
+        } else if (option == "--diffusion-model") {
+            config.diffusion_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--vae") {
+            config.vae_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--clip-l") {
+            config.clip_l_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--clip-g") {
+            config.clip_g_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--t5xxl") {
+            config.t5xxl_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--llm") {
+            config.llm_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--upscaler-model") {
+            config.upscaler_model_path = next_value(argc, argv, index, option);
+        } else if (option == "--upscaler-tile") {
+            const uint64_t tile = positive_integer(next_value(argc, argv, index, option), "upscaler tile size");
+            if (tile > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) {
+                throw std::runtime_error("upscaler tile size is too large");
+            }
+            config.upscaler_tile_size = static_cast<int32_t>(tile);
         } else if (option == "--threads") {
             const uint64_t threads = positive_integer(next_value(argc, argv, index, option), "thread count");
             if (threads > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) {
@@ -110,7 +142,16 @@ void print_serve_command_usage(std::ostream &output) {
            << "  --max-output-mp <n>    maximum output size in megapixels (default: 67)\n"
            << "  --vlm-model <path>     language-model GGUF for caption and VQA\n"
            << "  --vlm-projection <path> matching vision-projection GGUF\n"
+           << "  --segment-model <path> SAM 2, SAM 3, or EdgeTAM segmentation model\n"
+           << "  --detect-model <path>  full SAM 3 detection and grounded-cutout model\n"
+           << "  --depth-model <path>   Depth Anything model\n"
+           << "  --clip-model <path>    CLIP embedding and classification model\n"
+           << "  --ocr-model <path>     Tesseract traineddata model\n"
+           << "  --diffusion-checkpoint <path> monolithic diffusion checkpoint\n"
+           << "  --diffusion-model/--vae/--clip-l/--clip-g/--t5xxl/--llm <path> split diffusion components\n"
+           << "  --upscaler-model <path> ESRGAN-family upscaler model\n"
+           << "  --upscaler-tile <n>    upscaler tile size (default: 128)\n"
            << "  --context <count>      VLM context tokens (default: 4096)\n"
            << "  --threads <count>      CPU worker threads\n"
-           << "  --cpu | --gpu          select the VLM compute device (default: auto)\n";
+           << "  --cpu | --gpu          select the model compute device (default: auto)\n";
 }

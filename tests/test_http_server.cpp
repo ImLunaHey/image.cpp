@@ -53,8 +53,15 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
 
     if (image_bytes.empty()) {
         const httplib::Result unavailable = client.Post("/v1/caption", "image", "application/octet-stream");
+        const httplib::Result unavailable_ocr = client.Post("/v1/ocr", resize_source, "image/x-portable-pixmap");
+        const httplib::Result unavailable_depth = client.Post("/v1/depth", resize_source, "image/x-portable-pixmap");
+        const httplib::Result unavailable_clip =
+            client.Post("/v1/embed/image", resize_source, "image/x-portable-pixmap");
         passed = passed && health->body.find("\"vlm_loaded\":false") != std::string::npos && unavailable &&
-                 unavailable->status == 503 && unavailable->body.find("model_not_loaded") != std::string::npos;
+                 unavailable->status == 503 && unavailable->body.find("model_not_loaded") != std::string::npos &&
+                 unavailable_ocr && unavailable_ocr->status == 503 &&
+                 unavailable_ocr->body.find("model_not_configured") != std::string::npos && unavailable_depth &&
+                 unavailable_depth->status == 503 && unavailable_clip && unavailable_clip->status == 503;
     } else {
         const httplib::Result caption = client.Post("/v1/caption?temperature=0&max_tokens=16", image_bytes, "image/png");
         const httplib::UploadFormDataItems question = {
@@ -95,6 +102,53 @@ bool run_requests(imagecpp::server::HttpServerConfig config, const std::string &
     return passed;
 }
 
+bool run_analysis_requests(imagecpp::server::HttpServerConfig config, const std::string &image_bytes) {
+    config.port = 0;
+    config.device = IMAGECPP_DEVICE_CPU;
+    imagecpp::server::HttpServer server(std::move(config));
+    const int port = server.bind();
+    std::thread listener([&server] { (void)server.listen(); });
+    server.wait_until_ready();
+
+    httplib::Client client("127.0.0.1", port);
+    client.set_read_timeout(120);
+    const httplib::Result health = client.Get("/healthz");
+    const httplib::Result ocr = client.Post("/v1/ocr?psm=auto&dpi=300", image_bytes, "image/png");
+    const httplib::Result depth = client.Post("/v1/depth", image_bytes, "image/png");
+    const httplib::Result image_embedding = client.Post("/v1/embed/image", image_bytes, "image/png");
+    const httplib::Result text_embedding =
+        client.Post("/v1/embed/text", "{\"text\":\"a cat\"}", "application/json");
+    const httplib::UploadFormDataItems classification_request = {
+        {"image", image_bytes, "cat.png", "image/png"},
+        {"labels", "[\"cat\",\"dog\",\"car\"]", "", ""},
+    };
+    const httplib::Result classification = client.Post("/v1/classify", classification_request);
+    const bool passed = health && health->status == 200 &&
+                        health->body.find("\"depth\":true") != std::string::npos &&
+                        health->body.find("\"clip\":true") != std::string::npos &&
+                        health->body.find("\"ocr\":true") != std::string::npos && ocr && ocr->status == 200 &&
+                        ocr->body.find("\"regions\"") != std::string::npos && depth && depth->status == 200 &&
+                        depth->body.find("\"depth\":{") != std::string::npos &&
+                        depth->body.find("\"base64\"") != std::string::npos &&
+                        image_embedding && image_embedding->status == 200 &&
+                        image_embedding->body.find("\"embedding\"") != std::string::npos && text_embedding &&
+                        text_embedding->status == 200 &&
+                        text_embedding->body.find("\"embedding\"") != std::string::npos && classification &&
+                        classification->status == 200 && classification->body.find("\"label\":\"cat\"") !=
+                                                                  std::string::npos;
+    server.stop();
+    listener.join();
+    if (!passed) {
+        print_result("analysis health", health);
+        print_result("ocr", ocr);
+        print_result("depth", depth);
+        print_result("image embedding", image_embedding);
+        print_result("text embedding", text_embedding);
+        print_result("classification", classification);
+    }
+    return passed;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -102,6 +156,13 @@ int main(int argc, char **argv) {
         imagecpp::server::HttpServerConfig config;
         if (argc == 1) {
             return run_requests(std::move(config), {}) ? 0 : 1;
+        }
+        if (argc == 6 && std::string(argv[1]) == "--analysis") {
+            config.ocr_model_path = argv[2];
+            config.depth_model_path = argv[3];
+            config.clip_model_path = argv[4];
+            const std::string image = read_file(argv[5]);
+            return !image.empty() && run_analysis_requests(std::move(config), image) ? 0 : 1;
         }
         if (argc != 4) {
             return 1;
