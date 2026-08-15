@@ -375,7 +375,10 @@ if(IMAGECPP_WITH_DEPTH_ANYTHING)
 endif()
 
 if(IMAGECPP_WITH_SAM3)
-    add_library(imagecpp_sam3_engine OBJECT external/sam3/sam3.cpp)
+    add_library(imagecpp_sam3_engine OBJECT
+        external/sam3/sam3.cpp
+        src/provider/sam3_no_subprocess.c
+    )
     target_compile_features(imagecpp_sam3_engine PRIVATE cxx_std_14)
     target_include_directories(imagecpp_sam3_engine PRIVATE
         external/sam3
@@ -383,6 +386,8 @@ if(IMAGECPP_WITH_SAM3)
     )
     target_compile_definitions(imagecpp_sam3_engine PRIVATE
         SAM3_LOG_LEVEL=0
+        popen=imagecpp_sam3_disabled_popen
+        pclose=imagecpp_sam3_disabled_pclose
         STB_IMAGE_STATIC
         STB_IMAGE_WRITE_STATIC
     )
