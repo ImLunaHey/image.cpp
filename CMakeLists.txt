@@ -161,6 +161,10 @@ if(IMAGECPP_WITH_TESSERACT)
     target_include_directories(libtesseract BEFORE PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/external/tesseract"
     )
+    # Tesseract's image wrapper uses uint32_t without including stdint.h on MSVC.
+    target_compile_options(libtesseract PRIVATE
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/FIstdint.h>
+    )
     target_compile_definitions(libtesseract PRIVATE TESSERACT_DISABLE_DEBUG_FONTS=1)
     target_compile_definitions(leptonica PRIVATE MINIMUM_SEVERITY=5)
     set_target_properties(tesseract PROPERTIES EXCLUDE_FROM_ALL YES)
@@ -298,7 +302,7 @@ endif()
 
 if(IMAGECPP_WITH_CLIP)
     add_library(imagecpp_clip_engine STATIC external/clipcpp/clip.cpp)
-    target_compile_features(imagecpp_clip_engine PRIVATE cxx_std_17)
+    target_compile_features(imagecpp_clip_engine PRIVATE cxx_std_20)
     target_include_directories(imagecpp_clip_engine PRIVATE
         external/clipcpp
         external/stb
