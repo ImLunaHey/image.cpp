@@ -114,7 +114,15 @@ if(IMAGECPP_WITH_TESSERACT)
     set(BUILD_SHARED_LIBS OFF)
     add_subdirectory(external/leptonica EXCLUDE_FROM_ALL)
     target_sources(leptonica PRIVATE src/provider/leptonica_no_subprocess.c)
-    target_compile_definitions(leptonica PRIVATE system=imagecpp_leptonica_system_disabled)
+    if(MSVC)
+        target_compile_options(leptonica PRIVATE
+            "/FI${CMAKE_CURRENT_SOURCE_DIR}/src/provider/leptonica_no_subprocess.h"
+        )
+    else()
+        target_compile_options(leptonica PRIVATE
+            -include "${CMAKE_CURRENT_SOURCE_DIR}/src/provider/leptonica_no_subprocess.h"
+        )
+    endif()
 
     set(IMAGECPP_LEPTONICA_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/leptonica")
     set(IMAGECPP_LEPTONICA_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/external/leptonica")
