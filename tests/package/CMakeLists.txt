@@ -15,6 +15,17 @@ target_compile_features(imagecpp_package_consumer PRIVATE c_std_11)
 target_link_libraries(imagecpp_package_consumer PRIVATE imagecpp::imagecpp)
 
 add_test(NAME imagecpp.package-consumer COMMAND imagecpp_package_consumer)
+set_tests_properties(imagecpp.package-consumer PROPERTIES TIMEOUT 30)
+
+get_target_property(IMAGECPP_PACKAGE_LIBRARY_TYPE imagecpp::imagecpp TYPE)
+if(WIN32 AND IMAGECPP_PACKAGE_LIBRARY_TYPE STREQUAL "SHARED_LIBRARY")
+    add_custom_command(TARGET imagecpp_package_consumer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:imagecpp::imagecpp>"
+            "$<TARGET_FILE_DIR:imagecpp_package_consumer>"
+        VERBATIM
+    )
+endif()
 
 if(IMAGECPP_PACKAGE_VLM_MODEL AND IMAGECPP_PACKAGE_VLM_PROJECTION_MODEL AND IMAGECPP_PACKAGE_TEST_IMAGE)
     add_executable(imagecpp_package_vlm_consumer ../test_vlm_c_api.c)
