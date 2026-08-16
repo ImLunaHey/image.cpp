@@ -449,6 +449,7 @@ if(IMAGECPP_WITH_STABLE_DIFFUSION)
         INTERFACE_LINK_LIBRARIES "$<LINK_ONLY:ggml>"
         POSITION_INDEPENDENT_CODE ON
     )
+    set_target_properties(zip PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_sources(imagecpp PRIVATE src/provider/stable_diffusion_provider.cpp)
     target_include_directories(imagecpp PRIVATE external/stable-diffusion/include)
     target_link_libraries(imagecpp PRIVATE stable-diffusion)
