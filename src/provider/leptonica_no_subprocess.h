@@ -3,6 +3,10 @@
 
 #include <stdlib.h>
 
+#ifdef _WIN32
+#include <process.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
